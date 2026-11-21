@@ -1,9 +1,9 @@
 /* ChessLens service worker — app shell + CDN assets cached for offline use */
 'use strict';
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = 'chesslens-shell-' + VERSION;
-const CDN_CACHE = 'chesslens-cdn-v1'; // shared with app.js (engine files are stored here too)
+const CDN_CACHE = 'chesslens-cdn-v2';
 
 const SHELL_FILES = ['./', './index.html', './style.css', './app.js', './manifest.json'];
 const PRECACHE_CDN = [
@@ -41,10 +41,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Chess.com API: always live, never cached.
   if (url.hostname === 'api.chess.com') return;
 
-  // Same-origin app files: stale-while-revalidate, with offline fallback to index.html.
   if (url.origin === self.location.origin) {
     event.respondWith((async () => {
       const cache = await caches.open(SHELL_CACHE);
@@ -65,7 +63,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // CDN libraries (chess.js, Stockfish): cache-first, fill cache on first success.
   if (CDN_HOSTS.includes(url.hostname)) {
     event.respondWith((async () => {
       const cache = await caches.open(CDN_CACHE);
