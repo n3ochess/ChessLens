@@ -2,16 +2,13 @@
 (function () {
 'use strict';
 
-/* =====================================================================
-   Constants
-   ===================================================================== */
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-const DEPTH = 10;
-const MOVETIME_MS = 130;
+const DEPTH = 11;
+const MOVETIME_MS = 220;
 const LS_USER = 'chesslens.username';
 const LS_PGN = 'chesslens.lastpgn';
-const LS_CACHE = 'chesslens.cache.v2';
-const CDN_CACHE = 'chesslens-cdn-v2';
+const LS_CACHE = 'chesslens.cache.v3';
+const CDN_CACHE = 'chesslens-cdn-v3';
 const MAX_CACHED_GAMES = 10;
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
@@ -56,9 +53,6 @@ const SAMPLE_PGN = [
   '14. Rd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+ Nxb8 17. Rd8# 1-0'
 ].join('\n');
 
-/* =====================================================================
-   Helpers
-   ===================================================================== */
 const $ = (sel, root) => (root || document).querySelector(sel);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -67,7 +61,7 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const pick = (arr, i) => arr[Math.abs(i) % arr.length];
 
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage full or blocked */ } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
 
 function winPct(cp) {
   if (cp >= 9000) return 100;
@@ -108,9 +102,6 @@ function evalSentence(a) {
   return w + ' is completely winning.';
 }
 
-/* =====================================================================
-   State
-   ===================================================================== */
 const state = {
   game: null,
   ply: 0,
@@ -126,9 +117,6 @@ const state = {
   username: ''
 };
 
-/* =====================================================================
-   PGN parsing
-   ===================================================================== */
 function parsePgn(text) {
   const src = String(text || '').replace(/\r/g, '').trim();
   if (!src) throw new Error('Paste a PGN first.');
@@ -180,9 +168,6 @@ function detectMyColor(headers) {
   return null;
 }
 
-/* =====================================================================
-   Analysis cache
-   ===================================================================== */
 function loadCache(key) {
   try {
     const raw = lsGet(LS_CACHE);
@@ -205,9 +190,6 @@ function saveCache(key, analysis) {
   } catch (e) { /* ignore */ }
 }
 
-/* =====================================================================
-   Engine: Stockfish.js inside a Web Worker
-   ===================================================================== */
 async function getAsset(url) {
   let cache = null;
   try { cache = await caches.open(CDN_CACHE); } catch (e) { cache = null; }
@@ -312,7 +294,7 @@ const engine = {
 
   stop() { if (this.worker && this.status === 'ready') this.post('stop'); },
 
-  analyze(fen, depth, multiPv) {
+  analyze(fen, depth, multiPv, movetime) {
     return new Promise((resolve, reject) => {
       this.setMultiPv(multiPv || 1);
       const lines = {};
@@ -341,14 +323,11 @@ const engine = {
         }
       };
       this.post('position fen ' + fen);
-      this.post('go depth ' + depth + ' movetime ' + MOVETIME_MS);
+      this.post('go depth ' + depth + ' movetime ' + (movetime || MOVETIME_MS));
     });
   }
 };
 
-/* =====================================================================
-   Chess knowledge helpers
-   ===================================================================== */
 function bestCapture(ch) {
   const out = { net: 0, move: null };
   if (ch.game_over()) return out;
@@ -391,9 +370,6 @@ function uciToMove(u) {
   return { from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.length > 4 ? u[4] : undefined };
 }
 
-/* =====================================================================
-   Analysis pipeline
-   ===================================================================== */
 async function analyzePosition(g, i) {
   const fen = g.fens[i];
   const ch = new Chess();
@@ -404,9 +380,11 @@ async function analyzePosition(g, i) {
 
   const playedMove = i < g.moves.length ? g.moves[i] : null;
   const playedUci = playedMove ? (playedMove.from + playedMove.to + (playedMove.promotion || '')) : null;
-  const useMultiPv = !!(playedMove && (playedMove.captured || playedMove.flags.indexOf('+') >= 0 || i >= 8));
+  const isOpening = i < 6;
+  const useMultiPv = !isOpening && !!(playedMove && (playedMove.captured || playedMove.flags.indexOf('+') >= 0 || i >= 8));
+  const mt = isOpening ? 280 : MOVETIME_MS;
 
-  const res = await engine.analyze(fen, DEPTH, useMultiPv ? 2 : 1);
+  const res = await engine.analyze(fen, DEPTH, useMultiPv ? 2 : 1, mt);
   const l1 = res.lines[1];
   if (!l1) return { cp: 0, mate: null, best: res.best && res.best !== '(none)' ? res.best : null, second: null };
   const w1 = toWhite(l1, turn);
@@ -431,10 +409,11 @@ function computeMoveResult(k) {
   const uci = mv.from + mv.to + (mv.promotion || '');
   const isBest = !!A.best && uci === A.best;
   const loss = isBest ? 0 : Math.max(0, winBefore - winAfter);
+  const inaccCutoff = k < 6 ? 8 : 5;
 
   let cls;
-  if (isBest || loss <= 0.25) cls = 'best';
-  else if (loss < 5) cls = 'good';
+  if (isBest || loss <= 0.4) cls = 'best';
+  else if (loss < inaccCutoff) cls = 'good';
   else if (loss < 10) cls = 'inaccuracy';
   else if (loss < 20) cls = 'mistake';
   else cls = 'blunder';
@@ -546,9 +525,6 @@ async function analyzeGame(g, token) {
   }
 }
 
-/* =====================================================================
-   Rule-based commentary
-   ===================================================================== */
 function describeMove(c) {
   const m = c.move;
   const piece = NAME[m.piece];
@@ -735,13 +711,26 @@ function commentFor(k) {
 }
 
 /* =====================================================================
-   Rendering (including L-shaped knight arrows)
+   Rendering (L-shaped knight arrows + responsive board sizing)
    ===================================================================== */
 function sqXY(sq) {
   let f = sq.charCodeAt(0) - 97;
   let r = 8 - parseInt(sq[1], 10);
   if (state.flipped) { f = 7 - f; r = 7 - r; }
   return { x: f + 0.5, y: r + 0.5 };
+}
+
+function drawHead(tipX, tipY, dirX, dirY) {
+  const headLen = 0.36;
+  const halfW = 0.22;
+  const baseX = tipX - dirX * headLen;
+  const baseY = tipY - dirY * headLen;
+  const px = -dirY;
+  const py = dirX;
+  return '<polygon stroke="none" points="' +
+    tipX.toFixed(3) + ',' + tipY.toFixed(3) + ' ' +
+    (baseX + px * halfW).toFixed(3) + ',' + (baseY + py * halfW).toFixed(3) + ' ' +
+    (baseX - px * halfW).toFixed(3) + ',' + (baseY - py * halfW).toFixed(3) + '"/>';
 }
 
 function arrowSvg(from, to) {
@@ -752,10 +741,9 @@ function arrowSvg(from, to) {
   const adx = Math.round(Math.abs(dx));
   const ady = Math.round(Math.abs(dy));
 
-  // L-shaped arrow for knight moves (2 squares along major axis, 1 along minor axis)
   if ((adx === 1 && ady === 2) || (adx === 2 && ady === 1)) {
-    const sx = a.x + Math.sign(dx) * 0.14;
-    const sy = a.y + Math.sign(dy) * 0.14;
+    const sx = a.x + Math.sign(dx) * 0.12;
+    const sy = a.y + Math.sign(dy) * 0.12;
     let elbowX;
     let elbowY;
     let dirX;
@@ -764,45 +752,37 @@ function arrowSvg(from, to) {
       elbowX = b.x;
       elbowY = sy;
       dirX = 0;
-      dirY = Math.sign(b.y - sy) || 1;
+      dirY = dy >= 0 ? 1 : -1;
     } else {
       elbowX = sx;
       elbowY = b.y;
-      dirX = Math.sign(b.x - sx) || 1;
+      dirX = dx >= 0 ? 1 : -1;
       dirY = 0;
     }
-    const tipX = b.x - dirX * 0.12;
-    const tipY = b.y - dirY * 0.12;
-    const baseX = tipX - dirX * 0.34;
-    const baseY = tipY - dirY * 0.34;
-    const px = -dirY;
-    const py = dirX;
-    const pts = sx.toFixed(3) + ',' + sy.toFixed(3) + ' ' +
-                elbowX.toFixed(3) + ',' + elbowY.toFixed(3) + ' ' +
-                baseX.toFixed(3) + ',' + baseY.toFixed(3);
-    return '<g opacity=".88" fill="#ffb02e" stroke="#ffb02e">' +
-      '<polyline fill="none" points="' + pts + '" stroke-width=".17" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<polygon stroke="none" points="' + tipX.toFixed(3) + ',' + tipY.toFixed(3) + ' ' +
-        (baseX + px * 0.22).toFixed(3) + ',' + (baseY + py * 0.22).toFixed(3) + ' ' +
-        (baseX - px * 0.22).toFixed(3) + ',' + (baseY - py * 0.22).toFixed(3) + '"/></g>';
+    const tipX = b.x - dirX * 0.14;
+    const tipY = b.y - dirY * 0.14;
+    const shaftEndX = tipX - dirX * 0.22;
+    const shaftEndY = tipY - dirY * 0.22;
+    const dPath = 'M ' + sx.toFixed(3) + ' ' + sy.toFixed(3) +
+                  ' L ' + elbowX.toFixed(3) + ' ' + elbowY.toFixed(3) +
+                  ' L ' + shaftEndX.toFixed(3) + ' ' + shaftEndY.toFixed(3);
+    return '<g opacity=".9" fill="#ffb02e" stroke="#ffb02e">' +
+      '<path fill="none" d="' + dPath + '" stroke-width=".17" stroke-linecap="round" stroke-linejoin="round"/>' +
+      drawHead(tipX, tipY, dirX, dirY) + '</g>';
   }
 
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
-  const px = -uy;
-  const py = ux;
   const tipX = b.x - ux * 0.08;
   const tipY = b.y - uy * 0.08;
-  const baseX = tipX - ux * 0.38;
-  const baseY = tipY - uy * 0.38;
+  const baseX = tipX - ux * 0.36;
+  const baseY = tipY - uy * 0.36;
   const sx = a.x + ux * 0.18;
   const sy = a.y + uy * 0.18;
   return '<g opacity=".85" fill="#ffb02e" stroke="#ffb02e">' +
     '<line x1="' + sx.toFixed(3) + '" y1="' + sy.toFixed(3) + '" x2="' + baseX.toFixed(3) + '" y2="' + baseY.toFixed(3) + '" stroke-width=".17" stroke-linecap="round"/>' +
-    '<polygon stroke="none" points="' + tipX.toFixed(3) + ',' + tipY.toFixed(3) + ' ' +
-      (baseX + px * 0.22).toFixed(3) + ',' + (baseY + py * 0.22).toFixed(3) + ' ' +
-      (baseX - px * 0.22).toFixed(3) + ',' + (baseY - py * 0.22).toFixed(3) + '"/></g>';
+    drawHead(tipX, tipY, ux, uy) + '</g>';
 }
 
 function currentFen() {
@@ -1060,9 +1040,6 @@ function render() {
   renderControls();
 }
 
-/* =====================================================================
-   Status (progress) bar
-   ===================================================================== */
 function setStatus(text, frac) {
   $('#status').hidden = false;
   $('#status-text').textContent = text;
@@ -1080,9 +1057,6 @@ function setStatus(text, frac) {
 }
 function hideStatus() { $('#status').hidden = true; }
 
-/* =====================================================================
-   Navigation
-   ===================================================================== */
 function goTo(p) {
   if (!state.game) return;
   const np = clamp(p, 0, state.game.moves.length);
@@ -1091,9 +1065,6 @@ function goTo(p) {
   render();
 }
 
-/* =====================================================================
-   Loading games
-   ===================================================================== */
 function loadGame(pgn, opts) {
   opts = opts || {};
   let g;
@@ -1180,9 +1151,6 @@ function renderGameList(games, username) {
   });
 }
 
-/* =====================================================================
-   Import drawer
-   ===================================================================== */
 function openSheet(tab) {
   const sheet = $('#sheet');
   sheet.hidden = false;
@@ -1261,9 +1229,6 @@ function onLoadSample() {
   closeSheet();
 }
 
-/* =====================================================================
-   Boot
-   ===================================================================== */
 async function waitForChess() {
   for (let i = 0; i < 120; i++) {
     if (typeof Chess === 'function') return true;
