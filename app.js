@@ -7,8 +7,8 @@ const DEPTH = 11;
 const MOVETIME_MS = 220;
 const LS_USER = 'chesslens.username';
 const LS_PGN = 'chesslens.lastpgn';
-const LS_CACHE = 'chesslens.cache.v3';
-const CDN_CACHE = 'chesslens-cdn-v3';
+const LS_CACHE = 'chesslens.cache.v5';
+const CDN_CACHE = 'chesslens-cdn-v5';
 const MAX_CACHED_GAMES = 10;
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
@@ -711,7 +711,7 @@ function commentFor(k) {
 }
 
 /* =====================================================================
-   Rendering (L-shaped knight arrows + responsive board sizing)
+   Rendering (L-shaped knight arrows + turn-based best pick)
    ===================================================================== */
 function sqXY(sq) {
   let f = sq.charCodeAt(0) - 97;
@@ -839,8 +839,12 @@ function renderOverlay() {
   const g = state.game;
   let h = '';
   if (g) {
-    const a = state.analysis[state.ply];
-    if (a && a.best && a.best.length >= 4) h += arrowSvg(a.best.slice(0, 2), a.best.slice(2, 4));
+    // Turn-based best move: for move ply > 0, show best move for that turn (ply - 1).
+    const turnIdx = state.ply > 0 ? state.ply - 1 : 0;
+    const a = state.analysis[turnIdx];
+    if (a && a.best && a.best.length >= 4) {
+      h += arrowSvg(a.best.slice(0, 2), a.best.slice(2, 4));
+    }
     if (state.ply > 0) {
       const r = state.results[state.ply - 1];
       if (r) {
@@ -886,16 +890,18 @@ function renderPlayers() {
   fill('#player-bottom', bottom);
 }
 
-function bestSanForPosition(i) {
-  const a = state.analysis[i];
-  if (!a || !a.best) return null;
-  if (a.bestSan === undefined) {
+function bestSanForPosition(posIndex, uciOverride) {
+  const a = state.analysis[posIndex];
+  const uci = uciOverride || (a && a.best);
+  if (!a || !uci) return null;
+  if (!a._sanMap) a._sanMap = {};
+  if (a._sanMap[uci] === undefined) {
     const ch = new Chess();
-    ch.load(state.game.fens[i]);
-    const m = ch.move(uciToMove(a.best));
-    a.bestSan = m ? m.san : null;
+    ch.load(state.game.fens[posIndex]);
+    const m = ch.move(uciToMove(uci));
+    a._sanMap[uci] = m ? m.san : null;
   }
-  return a.bestSan;
+  return a._sanMap[uci];
 }
 
 function summaryHtml() {
@@ -942,10 +948,19 @@ function renderCard() {
     html += '<p class="card-text">Starting position. Press <b>&gt;</b> to step through the game' +
       (done ? ' \u2014 every move is classified below.' : '; analysis is still running.') + '</p>';
     if (done) html += summaryHtml();
+
+    const startA = state.analysis[0];
+    if (startA && startA.best) {
+      const san = bestSanForPosition(0, startA.best);
+      if (san) html += '<div class="hint"><span class="swatch"></span>White\u2019s best move: <b>' + esc(san) + '</b></div>';
+    }
   } else {
     const k = state.ply - 1;
     const mv = g.moves[k];
     const r = state.results[k];
+    const moverName = mv.color === 'w' ? 'White' : 'Black';
+    const turnBefore = state.analysis[k];
+
     if (r) {
       const cl = CLS[r.cls];
       html += '<div class="card-head"><div class="badge-lg" style="background:' + cl.color + ';color:' + cl.fg + '">' + esc(cl.sym) + '</div>' +
@@ -958,18 +973,22 @@ function renderCard() {
       html += '<p class="card-text">' + esc(describeMove({ move: mv, prev, color: mv.color })) + '</p>';
       if (!state.engineError) html += '<p class="note" style="color:var(--muted)"><span class="spin"></span>Analyzing this move\u2026</p>';
     }
+
+    if (turnBefore && turnBefore.best) {
+      const san = bestSanForPosition(k, turnBefore.best);
+      if (san) {
+        const label = r && r.isBest
+          ? moverName + '\u2019s best move: <b>' + esc(san) + '</b> (played)'
+          : moverName + '\u2019s best move here was: <b>' + esc(san) + '</b>';
+        html += '<div class="hint"><span class="swatch"></span>' + label + '</div>';
+      }
+    }
   }
 
   if (state.engineError) {
     html += '<p class="note">The engine could not be loaded. It downloads once (internet needed) and is then cached for offline use. Reload when you are online to analyze this game.</p>';
   }
 
-  if (a && a.best) {
-    const san = bestSanForPosition(state.ply);
-    if (san) html += '<div class="hint"><span class="swatch"></span>Engine\u2019s pick here: <b>' + esc(san) + '</b></div>';
-  } else if (state.ply === total && a) {
-    html += '<div class="hint">End of game.</div>';
-  }
   el.innerHTML = html;
 }
 
