@@ -6,17 +6,18 @@
    Constants
    ===================================================================== */
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-const DEPTH = 12;
+const DEPTH = 10;
+const MOVETIME_MS = 130;
 const LS_USER = 'chesslens.username';
 const LS_PGN = 'chesslens.lastpgn';
-const LS_CACHE = 'chesslens.cache.v1';
-const CDN_CACHE = 'chesslens-cdn-v1';
+const LS_CACHE = 'chesslens.cache.v2';
+const CDN_CACHE = 'chesslens-cdn-v2';
 const MAX_CACHED_GAMES = 10;
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const NAME = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 const GLYPH = { k: '\u265A', q: '\u265B', r: '\u265C', b: '\u265D', n: '\u265E', p: '\u265F' };
-const TEXT_VS = '\uFE0E'; // force text (not emoji) presentation for the pawn glyph
+const TEXT_VS = '\uFE0E';
 
 const CLS = {
   brilliant:  { label: 'Brilliant',  sym: '!!', color: '#26c2a3', fg: '#fff' },
@@ -68,7 +69,6 @@ const pick = (arr, i) => arr[Math.abs(i) % arr.length];
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage full or blocked */ } }
 
-/* Lichess-style centipawn -> win percentage (0..100) */
 function winPct(cp) {
   if (cp >= 9000) return 100;
   if (cp <= -9000) return 0;
@@ -90,7 +90,7 @@ function fmtEval(a) {
   return (v > 0 ? '+' : v < 0 ? '-' : '') + Math.abs(v).toFixed(1);
 }
 function fmtBarLabel(a) {
-  if (!a) return '';
+  if (!a) return '0.0';
   if (a.mate === 0) return a.cp > 0 ? '1-0' : '0-1';
   if (a.mate != null) return 'M' + Math.abs(a.mate);
   return (Math.abs(a.cp) / 100).toFixed(1);
@@ -127,7 +127,7 @@ const state = {
 };
 
 /* =====================================================================
-   PGN parsing (own tokenizer + chess.js move validation)
+   PGN parsing
    ===================================================================== */
 function parsePgn(text) {
   const src = String(text || '').replace(/\r/g, '').trim();
@@ -181,7 +181,7 @@ function detectMyColor(headers) {
 }
 
 /* =====================================================================
-   Analysis cache (localStorage)
+   Analysis cache
    ===================================================================== */
 function loadCache(key) {
   try {
@@ -206,7 +206,7 @@ function saveCache(key, analysis) {
 }
 
 /* =====================================================================
-   Engine: Stockfish.js inside a Web Worker (assets cached for offline)
+   Engine: Stockfish.js inside a Web Worker
    ===================================================================== */
 async function getAsset(url) {
   let cache = null;
@@ -245,6 +245,7 @@ const engine = {
   handler: null,
   initPromise: null,
   label: '',
+  currentMultiPv: 1,
 
   init() {
     if (this.initPromise) return this.initPromise;
@@ -279,8 +280,15 @@ const engine = {
     };
     this.worker.onerror = () => { if (this.handler) this.handler('__error__'); };
     await this.command('uci', 'uciok', 30000);
-    this.post('setoption name MultiPV value 2');
+    this.currentMultiPv = 1;
+    this.post('setoption name MultiPV value 1');
     await this.command('isready', 'readyok', 20000);
+  },
+
+  setMultiPv(n) {
+    if (this.currentMultiPv === n) return;
+    this.currentMultiPv = n;
+    this.post('setoption name MultiPV value ' + n);
   },
 
   teardown() {
@@ -304,10 +312,11 @@ const engine = {
 
   stop() { if (this.worker && this.status === 'ready') this.post('stop'); },
 
-  analyze(fen, depth) {
+  analyze(fen, depth, multiPv) {
     return new Promise((resolve, reject) => {
+      this.setMultiPv(multiPv || 1);
       const lines = {};
-      const dog = setTimeout(() => this.post('stop'), 60000);
+      const dog = setTimeout(() => this.post('stop'), 25000);
       this.handler = (line) => {
         if (line === '__error__') {
           clearTimeout(dog); this.handler = null; reject(new Error('Engine stopped unexpectedly'));
@@ -332,7 +341,7 @@ const engine = {
         }
       };
       this.post('position fen ' + fen);
-      this.post('go depth ' + depth);
+      this.post('go depth ' + depth + ' movetime ' + MOVETIME_MS);
     });
   }
 };
@@ -340,8 +349,6 @@ const engine = {
 /* =====================================================================
    Chess knowledge helpers
    ===================================================================== */
-/* Best material-winning capture available to the side to move in `ch`.
-   net = value won - value lost if the opponent recaptures on that square. */
 function bestCapture(ch) {
   const out = { net: 0, move: null };
   if (ch.game_over()) return out;
@@ -359,7 +366,6 @@ function bestCapture(ch) {
   return out;
 }
 
-/* Does the mover threaten to win material next move? (null move trick) */
 function findThreat(fenAfter, color) {
   try {
     const parts = fenAfter.split(' ');
@@ -395,15 +401,21 @@ async function analyzePosition(g, i) {
   const turn = ch.turn();
   if (ch.in_checkmate()) return { cp: turn === 'w' ? -10000 : 10000, mate: 0, best: null, second: null };
   if (ch.game_over()) return { cp: 0, mate: null, best: null, second: null };
-  const res = await engine.analyze(fen, DEPTH);
+
+  const playedMove = i < g.moves.length ? g.moves[i] : null;
+  const playedUci = playedMove ? (playedMove.from + playedMove.to + (playedMove.promotion || '')) : null;
+  const useMultiPv = !!(playedMove && (playedMove.captured || playedMove.flags.indexOf('+') >= 0 || i >= 8));
+
+  const res = await engine.analyze(fen, DEPTH, useMultiPv ? 2 : 1);
   const l1 = res.lines[1];
   if (!l1) return { cp: 0, mate: null, best: res.best && res.best !== '(none)' ? res.best : null, second: null };
   const w1 = toWhite(l1, turn);
-  const w2 = res.lines[2] ? toWhite(res.lines[2], turn) : null;
+  const bestUci = res.best && res.best !== '(none)' ? res.best : l1.move;
+  const w2 = (useMultiPv && res.lines[2] && bestUci === playedUci) ? toWhite(res.lines[2], turn) : null;
   return {
     cp: w1.cp,
     mate: w1.mate,
-    best: res.best && res.best !== '(none)' ? res.best : l1.move,
+    best: bestUci,
     second: w2 ? { cp: w2.cp, mate: w2.mate } : null
   };
 }
@@ -426,7 +438,6 @@ function computeMoveResult(k) {
   else if (loss < 10) cls = 'inaccuracy';
   else if (loss < 20) cls = 'mistake';
   else cls = 'blunder';
-  // Already crushing and still crushing: don't punish.
   if ((cls === 'inaccuracy' || cls === 'mistake' || cls === 'blunder') && winBefore >= 93 && winAfter >= 75) cls = 'good';
 
   let sac = false;
@@ -580,7 +591,6 @@ function generateCommentary(c) {
   let bestHandled = false;
   const extras = [];
 
-  /* --- positive-class extras --- */
   if (cls === 'best' || cls === 'good' || cls === 'great' || cls === 'brilliant') {
     const flags = m.flags || '';
     if (m.captured) {
@@ -604,7 +614,6 @@ function generateCommentary(c) {
     if (keptMate && extras.length < 2) extras.push(who + ' now has a forced checkmate.');
   }
 
-  /* --- verdict --- */
   if (cls === 'brilliant') {
     out.push(pick([
       'A brilliant sacrifice! Giving up material here is the engine\u2019s top choice.',
@@ -632,7 +641,6 @@ function generateCommentary(c) {
     ], S));
     if (c.bestSan && c.loss > 1.5) { out.push('The engine slightly preferred ' + c.bestSan + '.'); bestHandled = true; }
   } else {
-    // inaccuracy / mistake / blunder
     const head = {
       inaccuracy: ['A small slip \u2014 it gives back part of the advantage.', 'An inaccuracy: playable, but there was something better.'],
       mistake: ['This is a mistake that noticeably shifts the evaluation.', 'A mistake \u2014 the position gets harder to hold.'],
@@ -640,7 +648,6 @@ function generateCommentary(c) {
     }[cls];
     out.push(pick(head, S));
 
-    // Reason, in priority order
     let reason = null;
     if (mateTheirs) {
       reason = 'It allows ' + opp + ' to force checkmate in ' + Math.abs(B.mate) + '.';
@@ -728,7 +735,7 @@ function commentFor(k) {
 }
 
 /* =====================================================================
-   Rendering
+   Rendering (including L-shaped knight arrows)
    ===================================================================== */
 function sqXY(sq) {
   let f = sq.charCodeAt(0) - 97;
@@ -742,6 +749,44 @@ function arrowSvg(from, to) {
   const b = sqXY(to);
   const dx = b.x - a.x;
   const dy = b.y - a.y;
+  const adx = Math.round(Math.abs(dx));
+  const ady = Math.round(Math.abs(dy));
+
+  // L-shaped arrow for knight moves (2 squares along major axis, 1 along minor axis)
+  if ((adx === 1 && ady === 2) || (adx === 2 && ady === 1)) {
+    const sx = a.x + Math.sign(dx) * 0.14;
+    const sy = a.y + Math.sign(dy) * 0.14;
+    let elbowX;
+    let elbowY;
+    let dirX;
+    let dirY;
+    if (adx === 2) {
+      elbowX = b.x;
+      elbowY = sy;
+      dirX = 0;
+      dirY = Math.sign(b.y - sy) || 1;
+    } else {
+      elbowX = sx;
+      elbowY = b.y;
+      dirX = Math.sign(b.x - sx) || 1;
+      dirY = 0;
+    }
+    const tipX = b.x - dirX * 0.12;
+    const tipY = b.y - dirY * 0.12;
+    const baseX = tipX - dirX * 0.34;
+    const baseY = tipY - dirY * 0.34;
+    const px = -dirY;
+    const py = dirX;
+    const pts = sx.toFixed(3) + ',' + sy.toFixed(3) + ' ' +
+                elbowX.toFixed(3) + ',' + elbowY.toFixed(3) + ' ' +
+                baseX.toFixed(3) + ',' + baseY.toFixed(3);
+    return '<g opacity=".88" fill="#ffb02e" stroke="#ffb02e">' +
+      '<polyline fill="none" points="' + pts + '" stroke-width=".17" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<polygon stroke="none" points="' + tipX.toFixed(3) + ',' + tipY.toFixed(3) + ' ' +
+        (baseX + px * 0.22).toFixed(3) + ',' + (baseY + py * 0.22).toFixed(3) + ' ' +
+        (baseX - px * 0.22).toFixed(3) + ',' + (baseY - py * 0.22).toFixed(3) + '"/></g>';
+  }
+
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
@@ -844,7 +889,7 @@ function renderEval() {
   bar.classList.toggle('wt', state.flipped);
   const atBottom = (cp >= 0) !== state.flipped;
   label.className = 'eval-label ' + (atBottom ? 'lb' : 'lt') + ' ' + (cp >= 0 ? 'onwhite' : 'onblack');
-  label.textContent = a ? fmtBarLabel(a) : '';
+  label.textContent = fmtBarLabel(a);
 }
 
 function renderPlayers() {
@@ -1309,7 +1354,6 @@ async function boot() {
     openSheet('user');
   }
 
-  // Warm the engine cache in the background so analysis works offline later.
   setTimeout(() => { if (!restored) engine.init(); }, 1500);
 }
 
