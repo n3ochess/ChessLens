@@ -25,11 +25,11 @@
 <div id="app">
 
   <header class="topbar">
-    <div class="brand">
+    <button id="btn-brand" class="brand" aria-label="Open games and import menu" title="Games &amp; import">
       <svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true"><circle cx="28" cy="28" r="15" fill="none" stroke="#81b64c" stroke-width="6"/><path d="M39 39l14 14" stroke="#81b64c" stroke-width="7" stroke-linecap="round"/></svg>
       <span>ChessLens</span>
       <span id="net" class="net" hidden>Offline</span>
-    </div>
+    </button>
     <div class="spacer"></div>
     <button id="btn-install" class="btn ghost" hidden>Install</button>
     <button id="btn-flip" class="icon-btn" aria-label="Flip board" title="Flip board">
@@ -69,6 +69,14 @@
 
       <nav class="moves" id="moves" aria-label="Move list"></nav>
 
+      <section class="card gcard" id="graph-card" hidden>
+        <div class="gcard-head">
+          <h3>Advantage</h3>
+          <button id="btn-open-report" class="btn ghost small">Summary</button>
+        </div>
+        <div id="graph" class="graph"></div>
+      </section>
+
       <footer class="foot">
         <p>Independent tool — not affiliated with Chess.com</p>
         <p class="tiny">Analysis runs on your device · Stockfish + chess.js</p>
@@ -84,22 +92,22 @@
   </div>
 </div>
 
-<!-- Import drawer -->
+<!-- Import / Games drawer -->
 <div id="sheet" class="sheet" hidden>
   <div class="sheet-backdrop" data-close></div>
-  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Import game">
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Import and games">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h2>Import game</h2>
+      <h2>ChessLens</h2>
       <button class="icon-btn" data-close aria-label="Close">✕</button>
     </div>
 
     <div class="tabs" role="tablist">
-      <button class="tab active" role="tab" data-tab="user" aria-selected="true">Chess.com</button>
-      <button class="tab" role="tab" data-tab="pgn" aria-selected="false">Paste PGN</button>
+      <button class="tab active" role="tab" data-tab="import" aria-selected="true">Import</button>
+      <button class="tab" role="tab" data-tab="games" aria-selected="false">Games</button>
     </div>
 
-    <section id="tab-user" class="tabpane">
+    <section id="tab-import" class="tabpane">
       <div id="user-chips" class="chips" hidden></div>
       <label class="lbl" for="in-user">Chess.com username</label>
       <div class="row">
@@ -107,10 +115,9 @@
       </div>
       <button id="btn-load-games" class="btn primary wide">Load Recent Games</button>
       <p id="user-msg" class="msg" role="status"></p>
-      <div id="glist" class="glist"></div>
-    </section>
 
-    <section id="tab-pgn" class="tabpane" hidden>
+      <div class="divider"><span>or paste a PGN</span></div>
+
       <label class="lbl" for="in-pgn">PGN</label>
       <textarea id="in-pgn" rows="9" spellcheck="false" autocapitalize="none" autocorrect="off" placeholder="Paste PGN here…"></textarea>
       <div class="row gap">
@@ -119,48 +126,45 @@
       </div>
       <p id="pgn-msg" class="msg" role="status"></p>
     </section>
+
+    <section id="tab-games" class="tabpane" hidden>
+      <p id="games-msg" class="msg" role="status"></p>
+
+      <div id="games-chesscom" hidden>
+        <div class="gl-head">
+          <h3 id="glist-title">Chess.com</h3>
+          <button id="btn-refresh-games" class="btn ghost small">Refresh</button>
+        </div>
+        <div id="glist" class="glist"></div>
+      </div>
+
+      <div id="games-saved" hidden>
+        <div class="gl-head">
+          <h3>Saved on this device</h3>
+          <button id="btn-clear-lib" class="btn ghost small">Clear</button>
+        </div>
+        <div id="lib-list" class="glist"></div>
+      </div>
+
+      <p id="games-empty" class="set-empty" hidden>No games yet. Use the Import tab to load games from Chess.com or paste a PGN.</p>
+    </section>
   </div>
 </div>
 
-<!-- Settings drawer -->
-<div id="settings" class="sheet" hidden>
+<!-- Game summary (report) -->
+<div id="report" class="sheet" hidden>
   <div class="sheet-backdrop" data-close></div>
-  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="sheet-panel report-panel" role="dialog" aria-modal="true" aria-label="Game summary">
     <div class="sheet-handle"></div>
     <div class="sheet-head">
-      <h2>Settings</h2>
+      <h2>Game summary</h2>
       <button class="icon-btn" data-close aria-label="Close">✕</button>
     </div>
-
-    <section class="set-sec">
-      <h3>Chess.com profiles</h3>
-      <p class="set-help">Save your usernames and switch between them. The active profile is used to detect your color and to load recent games.</p>
-      <div id="profile-list" class="plist"></div>
-      <div class="row gap">
-        <input id="in-profile" class="grow" type="text" inputmode="text" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Add username" aria-label="Chess.com username to add">
-        <button id="btn-add-profile" class="btn primary">Add</button>
-      </div>
-      <p id="profile-msg" class="msg" role="status"></p>
-    </section>
-
-    <section class="set-sec">
-      <h3>Preview</h3>
-      <div id="prev-board" class="prev-board" role="img" aria-label="Board and pieces preview"></div>
-    </section>
-
-    <section class="set-sec">
-      <h3>Board theme</h3>
-      <div id="board-themes" class="opts"></div>
-    </section>
-
-    <section class="set-sec">
-      <h3>Piece style</h3>
-      <div id="piece-styles" class="opts"></div>
-    </section>
-  </div>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/chess.js@0.10.3/chess.min.js';document.head.appendChild(s);"></script>
-<script src="app.js" defer></script>
-</body>
-</html>
+    <div class="report-body" id="report-body">
+      <div id="report-head" class="rep-players"></div>
+      <div id="report-progress" class="rep-prog"></div>
+      <div id="report-graph" class="graph"></div>
+      <div id="report-info" class="rep-info"></div>
+      <div id="report-chips"></div>
+      <div id="report-stats"></div>
+    </div>
