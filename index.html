@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-board="green" data-pieces="neo">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -10,7 +10,7 @@
 /* Apply saved appearance before first paint (avoids a flash of the default theme) */
 (function () {
   try {
-    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v7') || localStorage.getItem('chesslens.prefs.v6') || '{}');
+    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v8') || localStorage.getItem('chesslens.prefs.v7') || localStorage.getItem('chesslens.prefs.v6') || '{}');
     var r = document.documentElement;
     if (p && /^[a-z]{2,20}$/.test(p.board)) r.setAttribute('data-board', p.board);
     if (p && /^[a-z]{2,20}$/.test(p.pieces)) r.setAttribute('data-pieces', p.pieces);
