@@ -6,6 +6,17 @@
 <meta name="theme-color" content="#262421">
 <meta name="description" content="ChessLens — analyze chess games offline with Stockfish, right in your browser.">
 <title>ChessLens</title>
+<script>
+/* Apply saved appearance before first paint (avoids a flash of the default theme) */
+(function () {
+  try {
+    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v6') || '{}');
+    var r = document.documentElement;
+    if (p && /^[a-z]{2,20}$/.test(p.board)) r.setAttribute('data-board', p.board);
+    if (p && /^[a-z]{2,20}$/.test(p.pieces)) r.setAttribute('data-pieces', p.pieces);
+  } catch (e) { /* ignore */ }
+})();
+</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23262421'/%3E%3Ccircle cx='28' cy='28' r='15' fill='none' stroke='%2381b64c' stroke-width='6'/%3E%3Cpath d='M39 39l14 14' stroke='%2381b64c' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
@@ -23,6 +34,9 @@
     <button id="btn-install" class="btn ghost" hidden>Install</button>
     <button id="btn-flip" class="icon-btn" aria-label="Flip board" title="Flip board">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>
+    </button>
+    <button id="btn-settings" class="icon-btn" aria-label="Settings" title="Settings">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
     <button id="btn-import" class="btn primary">Import</button>
   </header>
@@ -86,6 +100,7 @@
     </div>
 
     <section id="tab-user" class="tabpane">
+      <div id="user-chips" class="chips" hidden></div>
       <label class="lbl" for="in-user">Chess.com username</label>
       <div class="row">
         <input id="in-user" type="text" inputmode="text" autocapitalize="none" autocomplete="username" autocorrect="off" spellcheck="false" placeholder="e.g. hikaru">
@@ -103,6 +118,44 @@
         <button id="btn-sample" class="btn ghost grow">Load Sample Game</button>
       </div>
       <p id="pgn-msg" class="msg" role="status"></p>
+    </section>
+  </div>
+</div>
+
+<!-- Settings drawer -->
+<div id="settings" class="sheet" hidden>
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" data-close aria-label="Close">✕</button>
+    </div>
+
+    <section class="set-sec">
+      <h3>Chess.com profiles</h3>
+      <p class="set-help">Save your usernames and switch between them. The active profile is used to detect your color and to load recent games.</p>
+      <div id="profile-list" class="plist"></div>
+      <div class="row gap">
+        <input id="in-profile" class="grow" type="text" inputmode="text" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Add username" aria-label="Chess.com username to add">
+        <button id="btn-add-profile" class="btn primary">Add</button>
+      </div>
+      <p id="profile-msg" class="msg" role="status"></p>
+    </section>
+
+    <section class="set-sec">
+      <h3>Preview</h3>
+      <div id="prev-board" class="prev-board" role="img" aria-label="Board and pieces preview"></div>
+    </section>
+
+    <section class="set-sec">
+      <h3>Board theme</h3>
+      <div id="board-themes" class="opts"></div>
+    </section>
+
+    <section class="set-sec">
+      <h3>Piece style</h3>
+      <div id="piece-styles" class="opts"></div>
     </section>
   </div>
 </div>
