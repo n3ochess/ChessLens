@@ -1,11 +1,26 @@
 /* ChessLens service worker — app shell + CDN assets cached for offline use */
 'use strict';
 
-const VERSION = 'v6';
+const VERSION = 'v7';
 const SHELL_CACHE = 'chesslens-shell-' + VERSION;
 const CDN_CACHE = 'chesslens-cdn-' + VERSION; // must match CDN_CACHE in app.js
 
-const SHELL_FILES = ['./', './index.html', './style.css', './app.js', './manifest.json'];
+const NEO_FILES = [
+  './pieces/neo/WhitePawn.png',
+  './pieces/neo/WhiteKnight.png',
+  './pieces/neo/WhiteBishop.png',
+  './pieces/neo/WhiteRook.png',
+  './pieces/neo/WhiteQueen.png',
+  './pieces/neo/WhiteKing.png',
+  './pieces/neo/BlackPawn.png',
+  './pieces/neo/BlackKnight.png',
+  './pieces/neo/BlackBishop.png',
+  './pieces/neo/BlackRook.png',
+  './pieces/neo/BlackQueen.png',
+  './pieces/neo/BlackKing.png'
+];
+
+const SHELL_FILES = ['./', './index.html', './style.css', './app.js', './manifest.json', ...NEO_FILES];
 const PRECACHE_CDN = [
   'https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js',
   'https://cdn.jsdelivr.net/npm/chess.js@0.10.3/chess.min.js'
@@ -15,7 +30,6 @@ const CDN_HOSTS = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net', 'unpkg.com'];
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const shell = await caches.open(SHELL_CACHE);
-    // cache:'reload' bypasses the HTTP cache so a new version never precaches stale files
     await shell.addAll(SHELL_FILES.map((u) => new Request(u, { cache: 'reload' })));
     const cdn = await caches.open(CDN_CACHE);
     await Promise.all(PRECACHE_CDN.map(async (url) => {
