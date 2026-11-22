@@ -1,9 +1,9 @@
 /* ChessLens service worker — app shell + CDN assets cached for offline use */
 'use strict';
 
-const VERSION = 'v5';
+const VERSION = 'v6';
 const SHELL_CACHE = 'chesslens-shell-' + VERSION;
-const CDN_CACHE = 'chesslens-cdn-v5';
+const CDN_CACHE = 'chesslens-cdn-' + VERSION; // must match CDN_CACHE in app.js
 
 const SHELL_FILES = ['./', './index.html', './style.css', './app.js', './manifest.json'];
 const PRECACHE_CDN = [
@@ -15,7 +15,8 @@ const CDN_HOSTS = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net', 'unpkg.com'];
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const shell = await caches.open(SHELL_CACHE);
-    await shell.addAll(SHELL_FILES);
+    // cache:'reload' bypasses the HTTP cache so a new version never precaches stale files
+    await shell.addAll(SHELL_FILES.map((u) => new Request(u, { cache: 'reload' })));
     const cdn = await caches.open(CDN_CACHE);
     await Promise.all(PRECACHE_CDN.map(async (url) => {
       try {
