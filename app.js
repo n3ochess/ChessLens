@@ -4,17 +4,35 @@
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const STD_PLACEMENT = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
-const DEPTH = 11;
+const DEPTH = 11;          /* default = Standard preset (kept for fallbacks) */
 const MOVETIME_MS = 220;
+
+/* Engine strength presets. "Standard" equals the previous fixed settings, so older
+   analyses stay valid. depth/movetime: per position of the game scan; xDepth/xTime:
+   single position evaluated in What-if mode. Time caps keep weak phones responsive. */
+const ENGINE_LEVELS = [
+  { id: 'casual',   name: 'Casual',   desc: 'Fastest \u00B7 depth 8',   depth: 8,  movetime: 120, openTime: 160, xDepth: 12, xTime: 450 },
+  { id: 'standard', name: 'Standard', desc: 'Balanced \u00B7 depth 11', depth: 11, movetime: 220, openTime: 280, xDepth: 14, xTime: 700 },
+  { id: 'strong',   name: 'Strong',   desc: 'Deeper \u00B7 depth 14',   depth: 14, movetime: 450, openTime: 550, xDepth: 16, xTime: 1200 }
+];
+const DEFAULT_LEVEL = 'standard';
+const LOW_END = (function () {
+  try { return (navigator.hardwareConcurrency || 8) <= 2 || (navigator.deviceMemory || 8) <= 2; } catch (e) { return false; }
+})();
 /* Max number of plies (half-moves) that can be labelled "Book". Tweak freely (e.g. 8–16). */
 const BOOK_MAX_PLIES = 12;
 
-/* localStorage keys (v8) + legacy keys migrated/cleaned on boot */
-const LS_PROFILES = 'chesslens.profiles.v8';
-const LS_PREFS = 'chesslens.prefs.v8';
-const LS_PGN = 'chesslens.lastpgn.v8';
-const LS_CACHE = 'chesslens.cache.v8';
-const LS_LIB = 'chesslens.library.v8';
+/* localStorage keys (v9) + legacy keys migrated/cleaned on boot */
+const LS_PROFILES = 'chesslens.profiles.v9';
+const LS_PREFS = 'chesslens.prefs.v9';
+const LS_PGN = 'chesslens.lastpgn.v9';
+const LS_CACHE = 'chesslens.cache.v9';
+const LS_LIB = 'chesslens.library.v9';
+const LEGACY_PROFILES_V8 = 'chesslens.profiles.v8';
+const LEGACY_PREFS_V8 = 'chesslens.prefs.v8';
+const LEGACY_PGN_V8 = 'chesslens.lastpgn.v8';
+const LEGACY_CACHE_V8 = 'chesslens.cache.v8';
+const LEGACY_LIB_V8 = 'chesslens.library.v8';
 const LEGACY_PROFILES_V7 = 'chesslens.profiles.v7';
 const LEGACY_PREFS_V7 = 'chesslens.prefs.v7';
 const LEGACY_PGN_V7 = 'chesslens.lastpgn.v7';
@@ -26,7 +44,7 @@ const LEGACY_PGN_V6 = 'chesslens.lastpgn.v6';
 const LEGACY_PGN = 'chesslens.lastpgn';
 const LEGACY_CACHE_V6 = 'chesslens.cache.v6';
 const LEGACY_CACHE = 'chesslens.cache.v5';
-const CDN_CACHE = 'chesslens-cdn-v8'; // must match sw.js
+const CDN_CACHE = 'chesslens-cdn-v9'; // must match sw.js
 const MAX_CACHED_GAMES = 10;
 const MAX_PROFILES = 20;
 const MAX_LIBRARY = 30;
@@ -288,6 +306,100 @@ function computeBook(fens, nMoves) {
   return out;
 }
 
+/* =====================================================================
+   Guided openings ("Learn"): short main lines with a note for every move.
+   The positions also feed the opening-name lookup of the local book above.
+   ===================================================================== */
+const LESSONS = [
+  {
+    id: 'italian', name: 'Italian Game', side: 'w',
+    blurb: 'White develops fast and aims the bishop at f7. A friendly first opening with clear plans.',
+    moves: 'e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6 O-O O-O',
+    notes: [
+      "White claims the center and opens lines for the queen and the f1-bishop.",
+      "Black mirrors the idea: a pawn in the center and open lines for the queen and the f8-bishop.",
+      "The knight develops, attacks the e5 pawn and gets White ready to castle.",
+      "Black defends e5 and develops a piece at the same time.",
+      "The Italian bishop eyes f7, Black's most sensitive square early in the game.",
+      "Black develops the bishop to the matching diagonal. This is the Giuoco Piano, the \"quiet game\".",
+      "Prepares d4 to build a big pawn center and gives the bishop a retreat square on b3.",
+      "Black develops and puts pressure on the e4 pawn.",
+      "A solid choice: d3 supports e4 and keeps the position flexible instead of forcing matters.",
+      "Black supports the e5 pawn and frees the c8-bishop.",
+      "White castles: the king is safe and the rook joins the game.",
+      "Black does the same. Both sides are developed and the middlegame plans begin (Re1, Nbd2, a later d4 or b4)."
+    ]
+  },
+  {
+    id: 'ruy', name: 'Ruy Lopez', side: 'w',
+    blurb: 'The Spanish Game: slow, lasting pressure on e5 through the c6-knight. Rich and strategic.',
+    moves: 'e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3',
+    notes: [
+      "White grabs the center and opens lines for the queen and the f1-bishop.",
+      "Black mirrors with a center pawn of their own.",
+      "The knight attacks e5 and develops toward castling.",
+      "Black defends the pawn and develops.",
+      "The Ruy Lopez: the bishop pressures the knight that guards e5. It is not winning a pawn yet, just building long-term pressure.",
+      "The Morphy Defense: Black asks the bishop what it wants to do.",
+      "White keeps the bishop on the diagonal. Taking on c6 would be the Exchange Variation, a different plan.",
+      "Black develops and attacks the e4 pawn.",
+      "White castles first and lets e4 go for now. Taking it would lead to the sharp Open Variation.",
+      "Black picks the solid Closed Spanish: e5 is protected and the king is ready to castle.",
+      "The rook defends e4, so the bishop can retreat without losing the pawn.",
+      "Black gains space on the queenside and asks the bishop to move again.",
+      "The bishop retreats to the long diagonal where it keeps eyeing f7.",
+      "Black solidly supports e5 and opens the c8-bishop.",
+      "Prepares the central break d4 and makes room for the bishop on c2.",
+      "Black castles; both sides have finished their development.",
+      "A useful waiting move: it stops ...Bg4 and gives the king some air. This is the main-line Closed Ruy Lopez."
+    ]
+  },
+  {
+    id: 'caro', name: 'Caro-Kann Defense', side: 'b',
+    blurb: 'A rock-solid answer to 1.e4 that keeps a healthy pawn structure and a free light-squared bishop.',
+    moves: 'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7',
+    notes: [
+      "White takes the center with the king's pawn.",
+      "The Caro-Kann: Black prepares ...d5 with a pawn on c6, so the c8-bishop is not locked in (unlike the French).",
+      "White builds a big pawn center.",
+      "Black challenges the e4 pawn right away.",
+      "White defends e4 with a knight.",
+      "Black trades the center pawn and opens the position.",
+      "White recaptures and leads in development.",
+      "The key Caro-Kann idea: bring the bishop out before closing the pawn chain with ...e6.",
+      "The knight attacks the bishop with tempo.",
+      "The bishop stays active on the diagonal and is safe behind the pawn chain.",
+      "White threatens h5 to harass the bishop.",
+      "Black stops Ng5 and prepares a retreat square on h7.",
+      "White develops the last minor piece toward the center.",
+      "Black develops and supports ...Ngf6. The structure is healthy and there are no weaknesses to attack."
+    ]
+  },
+  {
+    id: 'fourknights', name: 'Four Knights Game', side: 'w',
+    blurb: 'Symmetrical development with a pin on the knights. Simple, solid and great for beginners.',
+    moves: 'e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bb4 O-O O-O d3 d6 Bg5 Bxc3 bxc3 Qe7',
+    notes: [
+      "White grabs the center and opens lines for the queen and the f1-bishop.",
+      "Black mirrors with a center pawn of their own.",
+      "The knight attacks e5 and develops toward castling.",
+      "Black defends e5 and develops.",
+      "The second knight protects e4 and heads the Four Knights setup.",
+      "Black copies the development, and all four knights are now out.",
+      "The Spanish Variation: the bishop pins the c6-knight, which guards e5.",
+      "Black mirrors the pin against the c3-knight.",
+      "White castles and puts the king in safety.",
+      "Black does the same.",
+      "A solid move: d3 supports e4 and opens the c1-bishop.",
+      "Black supports e5 and opens the c8-bishop.",
+      "The bishop pins the f6-knight against the queen, adding pressure.",
+      "Black trades the bishop for the knight, giving White doubled pawns.",
+      "White recaptures. The doubled c-pawns come with an open b-file and strong central control.",
+      "Black sidesteps the pin on the queen. The position is balanced and still very symmetrical."
+    ]
+  }
+];
+
 const $ = (sel, root) => (root || document).querySelector(sel);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -357,7 +469,15 @@ const state = {
   profiles: [],
   library: [],
   repSel: null,
-  prefs: { board: 'green', pieces: 'neo' }
+  prefs: { board: 'green', pieces: 'neo', engine: DEFAULT_LEVEL, sound: true },
+  analysisDepth: DEPTH,
+  explore: null,
+  exploreReq: 0,
+  lesson: null,
+  sel: null,
+  drag: null,
+  promo: null,
+  anim: null
 };
 
 function pieceHtml(type, color, styleOverride) {
@@ -375,12 +495,17 @@ function pieceHtml(type, color, styleOverride) {
    Preferences (board theme + piece style) — Neo is the default
    ===================================================================== */
 function loadPrefs() {
+  let raw = null;
   try {
-    const raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS_V7) || lsGet(LEGACY_PREFS);
+    raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS_V8) || lsGet(LEGACY_PREFS_V7) || lsGet(LEGACY_PREFS);
     const o = JSON.parse(raw || '{}');
     if (o && BOARD_THEMES.some((t) => t.id === o.board)) state.prefs.board = o.board;
     if (o && PIECE_STYLES.some((s) => s.id === o.pieces)) state.prefs.pieces = o.pieces;
+    if (o && ENGINE_LEVELS.some((l) => l.id === o.engine)) state.prefs.engine = o.engine;
+    if (o && typeof o.sound === 'boolean') state.prefs.sound = o.sound;
   } catch (e) { /* ignore */ }
+  /* first run on modest hardware: start with the lightest preset */
+  if (!raw && LOW_END) state.prefs.engine = 'casual';
   if (lsGet(LS_PREFS) === null) lsSet(LS_PREFS, JSON.stringify(state.prefs));
 }
 function applyPrefs() {
@@ -390,7 +515,7 @@ function applyPrefs() {
 }
 function setPref(key, val) {
   state.prefs[key] = val;
-  lsSet(LS_PREFS, JSON.stringify(state.prefs));
+  savePrefs();
   applyPrefs();
   renderAppearance();
   buildPreview(true);
@@ -412,7 +537,7 @@ function saveProfiles() {
 function loadProfiles() {
   let list = [];
   let active = '';
-  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES_V7) || lsGet(LEGACY_PROFILES);
+  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES_V8) || lsGet(LEGACY_PROFILES_V7) || lsGet(LEGACY_PROFILES);
   try {
     if (raw) {
       const o = JSON.parse(raw);
@@ -542,6 +667,23 @@ function renderAppearance() {
     '<span class="sq d">' + pieceHtml('n', 'b', s.id) + '</span></span>' +
     '<span>' + esc(s.name) + '</span></button>'
   ).join('');
+
+  const eo = $('#engine-levels');
+  if (eo) {
+    eo.innerHTML = ENGINE_LEVELS.map((l) =>
+      '<button class="opt" data-engine-id="' + l.id + '" aria-pressed="' + (state.prefs.engine === l.id) + '">' +
+      '<span>' + esc(l.name) + '</span><small>' + esc(l.desc) + '</small></button>'
+    ).join('');
+  }
+  const eh = $('#engine-hint');
+  if (eh) eh.hidden = !LOW_END;
+  const so = $('#sound-opts');
+  if (so) {
+    so.innerHTML = [{ id: 'on', name: 'On' }, { id: 'off', name: 'Off' }].map((o) =>
+      '<button class="opt" data-sound-id="' + o.id + '" aria-pressed="' + ((o.id === 'on') === !!state.prefs.sound) + '">' +
+      '<span>' + esc(o.name) + '</span></button>'
+    ).join('');
+  }
 }
 
 function buildPreview(force) {
@@ -636,26 +778,49 @@ function saveCache(key, analysis) {
   } catch (e) { /* ignore */ }
 }
 
-/* One-time, safe migration of v7 data to v8 keys, then cleanup of old keys */
+/* Analysis cache entries are keyed per game AND per engine strength ("<key>:<level>").
+   Everything stored before v9 was produced with the fixed Standard settings. */
+function migrateCacheObj(raw) {
+  const o = JSON.parse(raw);
+  if (!o || !o.data || typeof o.data !== 'object') return null;
+  const tag = (k) => (k.indexOf(':') >= 0 ? k : k + ':standard');
+  const out = { order: [], data: {} };
+  Object.keys(o.data).forEach((k) => { if (o.data[k]) out.data[tag(k)] = o.data[k]; });
+  (Array.isArray(o.order) ? o.order : []).forEach((k) => {
+    const nk = tag(String(k));
+    if (out.data[nk] && out.order.indexOf(nk) < 0) out.order.push(nk);
+  });
+  Object.keys(out.data).forEach((k) => { if (out.order.indexOf(k) < 0) out.order.push(k); });
+  return out;
+}
+
+/* One-time, safe migration of v8 (and older) data to v9 keys, then cleanup of old keys */
 function migrateStorage() {
-  /* analysis cache: same format, so reuse it instead of re-analyzing */
   try {
     if (lsGet(LS_CACHE) === null) {
-      const old = lsGet(LEGACY_CACHE_V7);
+      const old = lsGet(LEGACY_CACHE_V8) || lsGet(LEGACY_CACHE_V7);
       if (old) {
-        const o = JSON.parse(old);
-        if (o && o.data && typeof o.data === 'object') lsSet(LS_CACHE, old);
+        const m = migrateCacheObj(old);
+        if (m) lsSet(LS_CACHE, JSON.stringify(m));
       }
     }
   } catch (e) { /* ignore */ }
+  try {
+    if (lsGet(LS_LIB) === null) {
+      const oldLib = lsGet(LEGACY_LIB_V8);
+      if (oldLib) lsSet(LS_LIB, oldLib);
+    }
+  } catch (e) { /* ignore */ }
+  lsRemove(LEGACY_CACHE_V8);
   lsRemove(LEGACY_CACHE_V7);
   lsRemove(LEGACY_CACHE_V6);
   lsRemove(LEGACY_CACHE);
 }
 function cleanupLegacyStorage() {
-  if (lsGet(LS_PREFS) !== null) { lsRemove(LEGACY_PREFS_V7); lsRemove(LEGACY_PREFS); }
-  if (lsGet(LS_PROFILES) !== null) { lsRemove(LEGACY_PROFILES_V7); lsRemove(LEGACY_PROFILES); lsRemove(LEGACY_USER); }
-  if (lsGet(LS_PGN) !== null) { lsRemove(LEGACY_PGN_V7); lsRemove(LEGACY_PGN_V6); lsRemove(LEGACY_PGN); }
+  if (lsGet(LS_PREFS) !== null) { lsRemove(LEGACY_PREFS_V8); lsRemove(LEGACY_PREFS_V7); lsRemove(LEGACY_PREFS); }
+  if (lsGet(LS_PROFILES) !== null) { lsRemove(LEGACY_PROFILES_V8); lsRemove(LEGACY_PROFILES_V7); lsRemove(LEGACY_PROFILES); lsRemove(LEGACY_USER); }
+  if (lsGet(LS_PGN) !== null) { lsRemove(LEGACY_PGN_V8); lsRemove(LEGACY_PGN_V7); lsRemove(LEGACY_PGN_V6); lsRemove(LEGACY_PGN); }
+  if (lsGet(LS_LIB) !== null) lsRemove(LEGACY_LIB_V8);
 }
 
 /* =====================================================================
@@ -663,7 +828,7 @@ function cleanupLegacyStorage() {
    ===================================================================== */
 function loadLibrary() {
   try {
-    const o = JSON.parse(lsGet(LS_LIB) || '[]');
+    const o = JSON.parse(lsGet(LS_LIB) || lsGet(LEGACY_LIB_V8) || '[]');
     state.library = Array.isArray(o)
       ? o.filter((e) => e && typeof e.id === 'string' && typeof e.pgn === 'string').slice(0, MAX_LIBRARY)
       : [];
@@ -827,7 +992,17 @@ const engine = {
 
   stop() { if (this.worker && this.status === 'ready') this.post('stop'); },
 
-  analyze(fen, depth, multiPv, movetime) {
+  /* One search at a time: game scan and What-if requests share the same worker.
+     `skip` (optional) lets a queued request cancel itself before it starts. */
+  chain: Promise.resolve(),
+  analyze(fen, depth, multiPv, movetime, skip) {
+    const run = () => ((skip && skip()) ? null : this._analyze(fen, depth, multiPv, movetime));
+    const p = this.chain.then(run);
+    this.chain = p.catch(() => {});
+    return p;
+  },
+
+  _analyze(fen, depth, multiPv, movetime) {
     return new Promise((resolve, reject) => {
       this.setMultiPv(multiPv || 1);
       const lines = {};
@@ -842,12 +1017,14 @@ const engine = {
           if (!sc) return;
           const mp = line.match(/multipv (\d+)/);
           const dp = line.match(/depth (\d+)/);
-          const move = line.split(' pv ')[1].trim().split(/\s+/)[0];
+          const pv = line.split(' pv ')[1].trim().split(/\s+/);
+          const move = pv[0];
           lines[mp ? +mp[1] : 1] = {
             depth: dp ? +dp[1] : 0,
             cp: sc[1] === 'cp' ? +sc[2] : null,
             mate: sc[1] === 'mate' ? +sc[2] : null,
-            move
+            move,
+            pv: pv.slice(0, 8)
           };
         } else if (line.indexOf('bestmove') === 0) {
           clearTimeout(dog);
@@ -903,7 +1080,7 @@ function uciToMove(u) {
   return { from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.length > 4 ? u[4] : undefined };
 }
 
-async function analyzePosition(g, i) {
+async function analyzePosition(g, i, lv) {
   const fen = g.fens[i];
   const ch = new Chess();
   ch.load(fen);
@@ -915,9 +1092,9 @@ async function analyzePosition(g, i) {
   const playedUci = playedMove ? (playedMove.from + playedMove.to + (playedMove.promotion || '')) : null;
   const isOpening = i < 6;
   const useMultiPv = !isOpening && !!(playedMove && (playedMove.captured || playedMove.flags.indexOf('+') >= 0 || i >= 8));
-  const mt = isOpening ? 280 : MOVETIME_MS;
+  const mt = isOpening ? lv.openTime : lv.movetime;
 
-  const res = await engine.analyze(fen, DEPTH, useMultiPv ? 2 : 1, mt);
+  const res = await engine.analyze(fen, lv.depth, useMultiPv ? 2 : 1, mt);
   const l1 = res.lines[1];
   if (!l1) return { cp: 0, mate: null, best: res.best && res.best !== '(none)' ? res.best : null, second: null };
   const w1 = toWhite(l1, turn);
@@ -1040,12 +1217,15 @@ function startAnalysis() {
 async function analyzeGame(g, token) {
   if (token !== state.token || !g) return;
   const n = g.fens.length;
+  const lv = engineLevel();
+  const ckey = cacheKeyFor(g, lv);
+  state.analysisDepth = lv.depth;
   state.analysis = new Array(n).fill(null);
   state.results = new Array(n - 1).fill(null);
   state.doneCount = 0;
   state.engineError = false;
 
-  const cached = loadCache(g.key);
+  const cached = loadCache(ckey);
   if (cached && cached.length === n) {
     state.analysis = cached;
     for (let k = 0; k < n - 1; k++) { computeMoveResult(k); updateMoveTag(k); }
@@ -1056,6 +1236,7 @@ async function analyzeGame(g, token) {
   }
 
   setStatus('Loading engine\u2026', null);
+  render();
   const ok = await engine.init();
   if (token !== state.token) return;
   if (!ok) {
@@ -1069,16 +1250,16 @@ async function analyzeGame(g, token) {
   try {
     for (let i = 0; i < n; i++) {
       if (token !== state.token) return;
-      const a = await analyzePosition(g, i);
+      const a = await analyzePosition(g, i, lv);
       if (token !== state.token) return;
       state.analysis[i] = a;
       if (i > 0) { computeMoveResult(i - 1); updateMoveTag(i - 1); }
       state.doneCount = i + 1;
-      setStatus('Scanning positions ' + (i + 1) + ' / ' + n + ' (depth ' + DEPTH + ')', (i + 1) / n);
+      setStatus('Scanning positions ' + (i + 1) + ' / ' + n + ' (' + lv.name + ', depth ' + lv.depth + ')', (i + 1) / n);
       if (Math.abs(state.ply - i) <= 1) render();
       else scheduleGraphs();
     }
-    saveCache(g.key, state.analysis);
+    saveCache(ckey, state.analysis);
     hideStatus();
     render();
   } catch (err) {
@@ -1308,24 +1489,51 @@ function commentFor(k) {
 /* =====================================================================
    Stats: accuracy, counts and heuristic game rating
    ===================================================================== */
-function estimateElo(color, st, headers) {
-  if (st.avgLoss == null || st.nb === 0) return null;
-  const c = st.counts;
-  let perf = 3100 * Math.exp(-0.085 * st.avgLoss) - 20 * (c.blunder || 0) - 8 * (c.mistake || 0);
-  perf = clamp(perf, 100, 3000);
-  const base = parseInt(color === 'w' ? headers.WhiteElo : headers.BlackElo, 10);
-  let elo;
-  let basis;
-  if (Number.isFinite(base) && base > 0) {
-    const w = clamp(st.nb / (st.nb + 25), 0.15, 0.6);
-    elo = base * (1 - w) + perf * w;
-    basis = 'base';
-  } else {
-    const w = st.nb / (st.nb + 6);
-    elo = 1200 * (1 - w) + perf * w;
-    basis = 'perf';
+/* Conservative performance curve: average win%-loss per (non-book) move -> rating.
+   Deliberately modest at the top: a shallow engine cannot certify very high accuracy,
+   because it misses tactics that a deeper search would punish. */
+const ELO_CURVE = [[0, 2500], [2, 2100], [3.5, 1750], [5, 1450], [7, 1150], [10, 850], [14, 600], [20, 350], [30, 200]];
+
+function perfFromLoss(loss) {
+  const c = ELO_CURVE;
+  if (loss <= c[0][0]) return c[0][1];
+  for (let i = 1; i < c.length; i++) {
+    if (loss <= c[i][0]) {
+      const a = c[i - 1];
+      const b = c[i];
+      return a[1] + (b[1] - a[1]) * (loss - a[0]) / (b[0] - a[0]);
+    }
   }
-  return { value: Math.round(clamp(elo, 100, 3200) / 10) * 10, basis };
+  return c[c.length - 1][1];
+}
+
+const round10 = (v) => Math.round(v / 10) * 10;
+
+function estimateElo(color, st, headers, ctx) {
+  if (st.avgLoss == null || st.nb === 0) return null;
+  const nb = st.nb;
+  const cn = st.counts;
+  const rate = (k) => (cn[k] || 0) / nb;
+
+  /* performance: from the average loss, then a moderate penalty for how OFTEN errors happen */
+  let perf = perfFromLoss(st.avgLoss) - (450 * rate('blunder') + 160 * rate('mistake') + 40 * rate('inaccuracy'));
+  perf = clamp(perf, 150, 2500);
+
+  /* credibility: shallow searches and short games say less about a player's real level */
+  const depth = (ctx && ctx.depth) || DEPTH;
+  const dq = clamp((depth - 6) / 10, 0.4, 1);   /* depth 8 -> .4, 11 -> .5, 14 -> .8 */
+  const nq = nb / (nb + 20);                    /* 20 moves -> .5, 40 -> .67, 60 -> .75 */
+
+  const base = parseInt(color === 'w' ? headers.WhiteElo : headers.BlackElo, 10);
+  if (Number.isFinite(base) && base >= 100 && base <= 3500) {
+    /* anchored on the rating of the game: only a gentle nudge, more room to go down than up */
+    const delta = clamp((perf - base) * 0.5 * dq * nq, -250, 150);
+    return { value: round10(clamp(base + delta, 100, 3200)), basis: 'base' };
+  }
+  /* no base rating: shrink toward a modest prior, so a few clean moves cannot inflate the result */
+  const w = clamp(nq * (0.55 + 0.4 * dq), 0, 0.85);
+  const elo = 1000 * (1 - w) + perf * w;
+  return { value: round10(clamp(elo, 100, 2400)), basis: 'perf' };
 }
 
 function computeStats() {
@@ -1348,7 +1556,7 @@ function computeStats() {
       if (r.cls !== 'book') { lossSum += loss; nb++; }
     });
     const st = { counts, n, nb, acc: n ? accSum / n : null, avgLoss: nb ? lossSum / nb : null };
-    st.elo = estimateElo(color, st, g.headers || {});
+    st.elo = estimateElo(color, st, g.headers || {}, { depth: state.analysisDepth || DEPTH });
     res[color] = st;
   });
   return res;
@@ -1429,17 +1637,43 @@ function arrowSvg(from, to) {
     drawHead(tipX, tipY, ux, uy) + '</g>';
 }
 
-function currentFen() {
+/* What is on the board: a lesson, an explored (what-if) line, or the real game */
+function viewFen() {
+  if (state.lesson) return state.lesson.fens[state.lesson.idx];
+  if (state.explore) return state.explore.fens[state.explore.idx];
   return state.game ? state.game.fens[state.ply] : START_FEN;
 }
+function currentFen() { return viewFen(); }
+
+function viewLastMove() {
+  if (state.lesson) return state.lesson.idx > 0 ? state.lesson.moves[state.lesson.idx - 1] : null;
+  if (state.explore) return state.explore.idx > 0 ? state.explore.moves[state.explore.idx - 1] : null;
+  const g = state.game;
+  return g && state.ply > 0 ? g.moves[state.ply - 1] : null;
+}
+
+let boardSig = '';
 
 function renderBoard() {
   const boardEl = $('#board');
+  const fen = viewFen();
+  const last = viewLastMove();
+  const sel = state.sel;
+  const dragSq = state.drag && state.drag.ghost ? state.drag.sq : '';
+  const anim = state.anim;
+  state.anim = null;
+
+  /* skip rebuilding identical boards: keeps running slide animations alive */
+  const sig = [fen, state.flipped ? 1 : 0, last ? last.from + last.to : '', state.prefs.pieces,
+    sel ? sel.sq + ':' + sel.targets.map((t) => t.to + (t.cap ? 'x' : '')).join(',') : '', dragSq].join('|');
+  if (!anim && sig === boardSig && boardEl.firstChild) { sizeBoard(); return; }
+  boardSig = sig;
+
   const ch = new Chess();
-  ch.load(currentFen());
+  ch.load(fen);
   const bd = ch.board();
-  const g = state.game;
-  const last = g && state.ply > 0 ? g.moves[state.ply - 1] : null;
+  const tg = {};
+  if (sel) sel.targets.forEach((t) => { tg[t.to] = t.cap ? 2 : 1; });
 
   let checkSq = null;
   if (ch.in_check()) {
@@ -1462,6 +1696,9 @@ function renderBoard() {
       let cls = 'sq ' + (light ? 'l' : 'd');
       if (last && (sq === last.from || sq === last.to)) cls += ' hl';
       if (sq === checkSq) cls += ' chk';
+      if (sel && sq === sel.sq) cls += ' sel';
+      if (tg[sq]) cls += ' tgt' + (tg[sq] === 2 ? ' cap' : '');
+      if (sq === dragSq) cls += ' dragsrc';
       html += '<div class="' + cls + '" data-sq="' + sq + '">';
       if (dc === 0) html += '<span class="co r">' + rank + '</span>';
       if (dr === 7) html += '<span class="co f">' + 'abcdefgh'[file] + '</span>';
@@ -1471,6 +1708,7 @@ function renderBoard() {
   }
   boardEl.innerHTML = html;
   sizeBoard();
+  if (anim) slidePieces(boardEl, anim);
 }
 
 function sizeBoard() {
@@ -1482,7 +1720,12 @@ function renderOverlay() {
   const svg = $('#overlay');
   const g = state.game;
   let h = '';
-  if (g) {
+  if (state.lesson) {
+    h = '';
+  } else if (state.explore) {
+    const a = exploreEval();
+    if (a && a.best && a.best.length >= 4) h += arrowSvg(a.best.slice(0, 2), a.best.slice(2, 4));
+  } else if (g) {
     // Turn-based best move: for move ply > 0, show best move for that turn (ply - 1).
     const turnIdx = state.ply > 0 ? state.ply - 1 : 0;
     const a = state.analysis[turnIdx];
@@ -1505,23 +1748,36 @@ function renderOverlay() {
   svg.innerHTML = h;
 }
 
+function viewEval() {
+  if (state.lesson) return null;
+  if (state.explore) return exploreEval();
+  return state.game ? state.analysis[state.ply] : null;
+}
+
 function renderEval() {
-  const a = state.game ? state.analysis[state.ply] : null;
   const bar = $('#evalbar');
   const fill = $('#eval-white');
   const label = $('#eval-label');
+  bar.classList.toggle('wb', !state.flipped);
+  bar.classList.toggle('wt', state.flipped);
+  if (state.lesson) {
+    fill.style.height = '50%';
+    label.className = 'eval-label ' + (state.flipped ? 'lt' : 'lb') + ' onwhite';
+    label.textContent = '\u2013';
+    return;
+  }
+  const a = viewEval();
+  if (state.explore && !a) { label.textContent = '\u2026'; return; }   /* keep the bar while evaluating */
   const cp = a ? a.cp : 0;
   const pct = a ? winPct(cp) : 50;
   fill.style.height = pct.toFixed(1) + '%';
-  bar.classList.toggle('wb', !state.flipped);
-  bar.classList.toggle('wt', state.flipped);
   const atBottom = (cp >= 0) !== state.flipped;
   label.className = 'eval-label ' + (atBottom ? 'lb' : 'lt') + ' ' + (cp >= 0 ? 'onwhite' : 'onblack');
   label.textContent = fmtBarLabel(a);
 }
 
 function renderPlayers() {
-  const h = state.game ? state.game.headers : {};
+  const h = state.lesson ? { White: 'White', Black: 'Black' } : (state.game ? state.game.headers : {});
   const white = { name: h.White || 'White', elo: h.WhiteElo, c: 'w' };
   const black = { name: h.Black || 'Black', elo: h.BlackElo, c: 'b' };
   const top = state.flipped ? white : black;
@@ -1563,10 +1819,13 @@ function summaryHtml() {
 function renderCard() {
   const el = $('#card');
   const g = state.game;
+  if (state.lesson) { el.innerHTML = lessonCardHtml(); return; }
+  if (state.explore && g) { el.innerHTML = exploreCardHtml(); return; }
   if (!g) {
     el.innerHTML = '<div class="empty"><h2>Welcome to ChessLens</h2>' +
       '<p>Import a game from Chess.com or paste a PGN to get engine analysis with plain-English commentary \u2014 all on your device.</p>' +
-      '<button class="btn primary" data-open-import>Import a game</button></div>';
+      '<div class="row gap"><button class="btn primary grow" data-open-import>Import a game</button>' +
+      '<button class="btn ghost grow" data-open-learn>Learn openings</button></div></div>';
     return;
   }
   const total = g.moves.length;
@@ -1631,6 +1890,7 @@ function renderCard() {
     html += '<p class="note">The engine could not be loaded. It downloads once (internet needed) and is then cached for offline use. Reload when you are online to analyze this game.</p>';
   }
 
+  html += '<p class="tip">Tip: drag or tap a piece on the board to test a different move.</p>';
   el.innerHTML = html;
 }
 
@@ -1684,6 +1944,22 @@ function renderMoveActive() {
 }
 
 function renderControls() {
+  if (state.lesson) {
+    const L = state.lesson;
+    $('#btn-first').disabled = L.idx <= 0;
+    $('#btn-prev').disabled = L.idx <= 0;
+    $('#btn-next').disabled = L.idx >= L.moves.length;
+    $('#btn-last').disabled = L.idx >= L.moves.length;
+    return;
+  }
+  if (state.explore) {
+    const ex = state.explore;
+    $('#btn-first').disabled = ex.idx <= 0;
+    $('#btn-prev').disabled = false;          /* at the start of the line it returns to the game */
+    $('#btn-next').disabled = ex.idx >= ex.moves.length;
+    $('#btn-last').disabled = ex.idx >= ex.moves.length;
+    return;
+  }
   const total = state.game ? state.game.moves.length : 0;
   $('#btn-first').disabled = state.ply <= 0;
   $('#btn-prev').disabled = state.ply <= 0;
@@ -1769,7 +2045,7 @@ function renderGraphMain() {
   const card = $('#graph-card');
   const el = $('#graph');
   if (!card || !el) return;
-  card.hidden = !state.game;
+  card.hidden = !state.game || !!state.lesson;
   if (!state.game) { el.innerHTML = ''; return; }
   el.innerHTML = graphHtml(state.ply);
 }
@@ -1900,8 +2176,9 @@ function renderReport() {
   if (g.book && g.book.opening) {
     html += '<p class="rep-open">Opening: <b>' + esc(g.book.opening) + '</b> \u00B7 ' + g.book.count + (g.book.count === 1 ? ' book move' : ' book moves') + '</p>';
   }
-  html += '<p class="rep-note">Game rating is a rough local estimate based on accuracy, average loss per move and the number of mistakes' +
-    (h.WhiteElo || h.BlackElo ? ', blended with the ratings in the game' : '') + '. It is not an official rating.</p>';
+  html += '<p class="rep-note">Game rating is a rough, deliberately conservative local estimate based on average loss per move and how often mistakes happen' +
+    (h.WhiteElo || h.BlackElo ? ', anchored on the ratings in the game' : '') + '. Analyzed at ' + esc(engineLevel().name) + ' strength (depth ' +
+    state.analysisDepth + '). It is not an official rating.</p>';
   $('#report-stats').innerHTML = html;
 }
 
@@ -1920,6 +2197,8 @@ function onViewBoard() {
   if (!state.game) { closeSheet(); return; }
   const p = state.repSel != null ? state.repSel : 0;
   closeSheet();
+  state.explore = null;
+  state.exploreReq++;
   state.ply = clamp(p, 0, state.game.moves.length);
   render();
 }
@@ -1933,6 +2212,7 @@ function render() {
   renderMoveActive();
   renderControls();
   renderGraphMain();
+  renderModeBar();
   if ($('#report') && !$('#report').hidden) renderReport();
 }
 
@@ -1955,9 +2235,21 @@ function hideStatus() { $('#status').hidden = true; }
 
 function goTo(p) {
   if (!state.game) return;
-  const np = clamp(p, 0, state.game.moves.length);
-  if (np === state.ply) return;
+  const g = state.game;
+  const np = clamp(p, 0, g.moves.length);
+  const wasExploring = !!state.explore;
+  if (np === state.ply && !wasExploring) return;
+  clearTransient();
+  const delta = np - state.ply;
+  if (wasExploring) { state.explore = null; state.exploreReq++; }
   state.ply = np;
+  if (!wasExploring && delta === 1) {
+    const m = g.moves[np - 1];
+    state.anim = moveAnim(m, false);
+    soundFor(m);
+  } else if (!wasExploring && delta === -1) {
+    state.anim = moveAnim(g.moves[np], true);
+  }
   render();
 }
 
@@ -1969,6 +2261,10 @@ function loadGame(pgn, opts) {
   state.game = g;
   state.ply = 0;
   state.repSel = null;
+  clearTransient();
+  state.explore = null;
+  state.exploreReq++;
+  state.lesson = null;
   state.analysis = new Array(g.fens.length).fill(null);
   state.results = new Array(g.fens.length - 1).fill(null);
   state.doneCount = 0;
@@ -2107,6 +2403,7 @@ function openSheet(tab) {
   $('#in-user').value = state.username || '';
   renderUserChips();
   renderGamesTab();
+  renderLearnTab();
   switchTab(tab || (hasGames() ? 'games' : 'import'));
   document.body.style.overflow = 'hidden';
   const key = (state.username || '').toLowerCase();
@@ -2140,6 +2437,7 @@ function switchTab(name) {
   });
   $('#tab-import').hidden = name !== 'import';
   $('#tab-games').hidden = name !== 'games';
+  $('#tab-learn').hidden = name !== 'learn';
 }
 
 function setMsg(id, text, isErr) {
@@ -2243,6 +2541,674 @@ function onAddProfile() {
     : 'Saved "' + r.name + '" and set it as active.');
 }
 
+/* =====================================================================
+   v9 features: move sounds, slide animation, engine strength,
+   "What if" exploration (+ Back to the game) and guided openings
+   ===================================================================== */
+
+/* ---------- synthesized move sounds (Web Audio, no files) ---------- */
+const sfx = {
+  ctx: null,
+  master: null,
+
+  ensure() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      try {
+        this.ctx = new AC();
+        this.master = this.ctx.createGain();
+        this.master.gain.value = 0.8;
+        this.master.connect(this.ctx.destination);
+      } catch (e) { this.ctx = null; return null; }
+    }
+    if (this.ctx.state === 'suspended') { try { this.ctx.resume(); } catch (e) { /* ignore */ } }
+    return this.ctx;
+  },
+
+  env(g, t, peak, dur) {
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  },
+
+  tone(freq, t, dur, type, vol, endFreq) {
+    const c = this.ctx;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (endFreq) o.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
+    this.env(g, t, vol, dur);
+    o.connect(g);
+    g.connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.03);
+  },
+
+  noise(t, dur, vol, freq, q) {
+    const c = this.ctx;
+    const n = Math.max(1, Math.floor(c.sampleRate * dur));
+    const buf = c.createBuffer(1, n, c.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = c.createBufferSource();
+    s.buffer = buf;
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const g = c.createGain();
+    this.env(g, t, vol, dur);
+    s.connect(f);
+    f.connect(g);
+    g.connect(this.master);
+    s.start(t);
+  },
+
+  /* kind: move | castle | capture | check | mate */
+  play(kind) {
+    if (!state.prefs.sound) return;
+    const c = this.ensure();
+    if (!c) return;
+    const t = c.currentTime + 0.005;
+    try {
+      const thud = (at) => { this.tone(210, at, 0.08, 'triangle', 0.55, 110); this.noise(at, 0.035, 0.22, 2200, 0.9); };
+      if (kind === 'capture') {
+        this.noise(t, 0.09, 0.6, 1400, 0.7);
+        this.tone(160, t, 0.14, 'triangle', 0.7, 70);
+        this.tone(900, t, 0.03, 'square', 0.08);
+      } else if (kind === 'castle') {
+        thud(t);
+        thud(t + 0.1);
+      } else if (kind === 'check') {
+        thud(t);
+        this.tone(740, t + 0.07, 0.12, 'sine', 0.3);
+        this.tone(988, t + 0.16, 0.18, 'sine', 0.3);
+      } else if (kind === 'mate') {
+        this.noise(t, 0.09, 0.6, 1400, 0.7);
+        this.tone(160, t, 0.14, 'triangle', 0.7, 70);
+        this.tone(523.25, t + 0.08, 0.35, 'sine', 0.3);
+        this.tone(392, t + 0.2, 0.35, 'sine', 0.3);
+        this.tone(261.6, t + 0.34, 0.7, 'sine', 0.35);
+        this.tone(130.8, t + 0.34, 0.9, 'triangle', 0.3);
+      } else {
+        thud(t);
+      }
+    } catch (e) { /* audio is best-effort */ }
+  }
+};
+
+function soundFor(m) {
+  if (!m) return;
+  const san = m.san || '';
+  const f = m.flags || '';
+  if (san.indexOf('#') >= 0) sfx.play('mate');
+  else if (san.indexOf('+') >= 0) sfx.play('check');
+  else if (m.captured) sfx.play('capture');
+  else if (f.indexOf('k') >= 0 || f.indexOf('q') >= 0) sfx.play('castle');
+  else sfx.play('move');
+}
+
+/* ---------- slide animation (FLIP: new DOM is placed, then animated from the old square) ---------- */
+function reducedMotion() {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+}
+
+function castleRook(m) {
+  const f = m.flags || '';
+  const rank = m.color === 'w' ? '1' : '8';
+  if (f.indexOf('k') >= 0) return { from: 'h' + rank, to: 'f' + rank };
+  if (f.indexOf('q') >= 0) return { from: 'a' + rank, to: 'd' + rank };
+  return null;
+}
+
+/* The piece always ends on `to`; `reverse` plays the move backwards (the piece is already back on `from`) */
+function moveAnim(m, reverse) {
+  const list = [reverse ? { from: m.to, to: m.from } : { from: m.from, to: m.to }];
+  const r = castleRook(m);
+  if (r) list.push(reverse ? { from: r.to, to: r.from } : r);
+  return list;
+}
+
+function slidePieces(boardEl, list) {
+  if (!list || !list.length || reducedMotion()) return;
+  const size = boardEl.clientWidth / 8;
+  if (!size) return;
+  list.forEach((s) => {
+    const sq = boardEl.querySelector('.sq[data-sq="' + s.to + '"]');
+    const el = sq && sq.querySelector('.pc-img, .pc');
+    if (!el || !el.animate) return;
+    const a = sqXY(s.from);
+    const b = sqXY(s.to);
+    const dx = (a.x - b.x) * size;
+    const dy = (a.y - b.y) * size;
+    if (!dx && !dy) return;
+    el.style.zIndex = '20';
+    const an = el.animate(
+      [{ transform: 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)' }, { transform: 'translate(0,0)' }],
+      { duration: 180, easing: 'cubic-bezier(.22,.7,.3,1)' }
+    );
+    const done = () => { el.style.zIndex = ''; };
+    an.onfinish = done;
+    an.oncancel = done;
+  });
+}
+
+/* ---------- engine strength + preferences ---------- */
+function engineLevel() {
+  const base = ENGINE_LEVELS.find((l) => l.id === state.prefs.engine) || ENGINE_LEVELS[1];
+  if (!LOW_END || base.id !== 'strong') return base;
+  /* modest hardware: keep the deeper preset but cap the time per position */
+  return Object.assign({}, base, { movetime: 300, openTime: 380, xTime: 800 });
+}
+
+function cacheKeyFor(g, lv) { return g.key + ':' + lv.id; }
+
+function savePrefs() { lsSet(LS_PREFS, JSON.stringify(state.prefs)); }
+
+function setEngineLevel(id) {
+  if (!ENGINE_LEVELS.some((l) => l.id === id) || state.prefs.engine === id) return;
+  state.prefs.engine = id;
+  savePrefs();
+  renderAppearance();
+  const lv = engineLevel();
+  if (state.game) {
+    if (state.explore) state.explore.evals = {};
+    setMsg('#engine-msg', lv.name + ' selected \u2014 re-analyzing the open game\u2026');
+    buildMoveList();
+    startAnalysis();
+    render();
+    if (state.explore) requestExploreEval();
+  } else {
+    setMsg('#engine-msg', lv.name + ' selected.');
+  }
+}
+
+function setSound(on) {
+  state.prefs.sound = !!on;
+  savePrefs();
+  renderAppearance();
+  if (on) sfx.play('move');
+}
+
+/* ---------- helpers: SAN lines ---------- */
+function sanLine(startFen, sans) {
+  const p = startFen.split(' ');
+  let white = p[1] === 'w';
+  let n = parseInt(p[5], 10) || 1;
+  let out = '';
+  sans.forEach((s, i) => {
+    if (white) out += (out ? ' ' : '') + n + '. ' + s;
+    else out += (out ? ' ' : '') + (i === 0 ? n + '\u2026 ' : '') + s;
+    if (!white) n++;
+    white = !white;
+  });
+  return out;
+}
+
+function pvToSan(fen, pv, max) {
+  const ch = new Chess();
+  if (!ch.load(fen)) return [];
+  const out = [];
+  for (let i = 0; i < pv.length && i < max; i++) {
+    const m = ch.move(uciToMove(pv[i]));
+    if (!m) break;
+    out.push(m.san);
+  }
+  return out;
+}
+
+/* ---------- What-if exploration ---------- */
+function exploreEval() {
+  const ex = state.explore;
+  return ex ? (ex.evals[ex.fens[ex.idx]] || null) : null;
+}
+
+async function analyzeFenQuick(fen, lv, skip) {
+  const ch = new Chess();
+  if (!ch.load(fen)) return null;
+  const turn = ch.turn();
+  if (ch.in_checkmate()) return { cp: turn === 'w' ? -10000 : 10000, mate: 0, best: null, pv: [] };
+  if (ch.game_over()) return { cp: 0, mate: null, best: null, pv: [] };
+  const res = await engine.analyze(fen, lv.xDepth, 1, lv.xTime, skip);
+  if (!res) return null;
+  const l1 = res.lines[1];
+  const best = res.best && res.best !== '(none)' ? res.best : (l1 ? l1.move : null);
+  if (!l1) return { cp: 0, mate: null, best, pv: best ? [best] : [] };
+  const w = toWhite(l1, turn);
+  return { cp: w.cp, mate: w.mate, best, pv: l1.pv && l1.pv.length ? l1.pv : [best] };
+}
+
+function renderExploreUi() {
+  renderEval();
+  renderOverlay();
+  renderCard();
+  renderModeBar();
+}
+
+async function requestExploreEval() {
+  const ex = state.explore;
+  if (!ex) return;
+  const fen = ex.fens[ex.idx];
+  if (ex.evals[fen]) { renderExploreUi(); return; }
+  const req = ++state.exploreReq;
+  ex.error = false;
+  renderExploreUi();
+  const ok = await engine.init();
+  if (!ok) {
+    if (state.explore === ex) { ex.error = true; renderExploreUi(); }
+    return;
+  }
+  if (req !== state.exploreReq || state.explore !== ex) return;
+  try {
+    const a = await analyzeFenQuick(fen, engineLevel(), () => req !== state.exploreReq || state.explore !== ex);
+    if (!a) return;
+    ex.evals[fen] = a;
+  } catch (err) {
+    if (state.explore === ex) ex.error = true;
+  }
+  if (state.explore === ex && ex.fens[ex.idx] === fen) renderExploreUi();
+}
+
+function clearTransient() {
+  state.sel = null;
+  closePromo();
+}
+
+function exitExplore() {
+  if (!state.explore) return;
+  clearTransient();
+  state.explore = null;
+  state.exploreReq++;
+  render();
+}
+
+/* Plays a move from the position currently on the board. Following the game's own move just steps forward. */
+function commitMove(from, to, promo) {
+  const ch = new Chess();
+  ch.load(viewFen());
+  const m = ch.move({ from, to, promotion: promo || undefined });
+  state.sel = null;
+  if (!m) { renderBoard(); return false; }
+  const g = state.game;
+  let ex = state.explore;
+  if (!ex && g && state.ply < g.moves.length) {
+    const gm = g.moves[state.ply];
+    if (gm.from === m.from && gm.to === m.to && (gm.promotion || '') === (m.promotion || '')) {
+      goTo(state.ply + 1);
+      return true;
+    }
+  }
+  if (!ex) {
+    ex = state.explore = { basePly: state.ply, fens: [viewFen()], moves: [], idx: 0, evals: {}, error: false };
+  }
+  const nxt = ex.moves[ex.idx];
+  if (nxt && nxt.from === m.from && nxt.to === m.to && (nxt.promotion || '') === (m.promotion || '')) {
+    ex.idx++;
+  } else {
+    ex.moves = ex.moves.slice(0, ex.idx);
+    ex.fens = ex.fens.slice(0, ex.idx + 1);
+    ex.moves.push(m);
+    ex.fens.push(ch.fen());
+    ex.idx++;
+  }
+  state.anim = moveAnim(m, false);
+  soundFor(m);
+  render();
+  requestExploreEval();
+  return true;
+}
+
+/* ---------- navigation (works for the game, an explored line and a lesson) ---------- */
+function navPrev() {
+  if (state.lesson) { lessonGo(state.lesson.idx - 1); return; }
+  const ex = state.explore;
+  if (ex) {
+    clearTransient();
+    if (ex.idx <= 0) { exitExplore(); return; }
+    ex.idx--;
+    state.anim = moveAnim(ex.moves[ex.idx], true);
+    render();
+    requestExploreEval();
+    return;
+  }
+  goTo(state.ply - 1);
+}
+
+function navNext() {
+  if (state.lesson) { lessonGo(state.lesson.idx + 1); return; }
+  const ex = state.explore;
+  if (ex) {
+    if (ex.idx >= ex.moves.length) return;
+    clearTransient();
+    const m = ex.moves[ex.idx];
+    ex.idx++;
+    state.anim = moveAnim(m, false);
+    soundFor(m);
+    render();
+    requestExploreEval();
+    return;
+  }
+  goTo(state.ply + 1);
+}
+
+function navFirst() {
+  if (state.lesson) { lessonGo(0); return; }
+  const ex = state.explore;
+  if (ex) {
+    clearTransient();
+    ex.idx = 0;
+    render();
+    requestExploreEval();
+    return;
+  }
+  goTo(0);
+}
+
+function navLast() {
+  if (state.lesson) { lessonGo(state.lesson.moves.length); return; }
+  const ex = state.explore;
+  if (ex) {
+    clearTransient();
+    ex.idx = ex.moves.length;
+    render();
+    requestExploreEval();
+    return;
+  }
+  goTo(state.game ? state.game.moves.length : 0);
+}
+
+/* ---------- board interaction: tap to select / tap to move / drag and drop ---------- */
+const DRAG_PX = 6;
+
+function sqAtEvent(e) {
+  const r = $('#board').getBoundingClientRect();
+  if (!r.width) return null;
+  const x = (e.clientX - r.left) / r.width;
+  const y = (e.clientY - r.top) / r.height;
+  if (x < 0 || x >= 1 || y < 0 || y >= 1) return null;
+  let col = Math.floor(x * 8);
+  let row = Math.floor(y * 8);
+  if (state.flipped) { col = 7 - col; row = 7 - row; }
+  return 'abcdefgh'[col] + (8 - row);
+}
+
+function boardInteractive() {
+  return !!state.game && !state.lesson && !state.promo && !anySheetOpen();
+}
+
+function onBoardDown(e) {
+  if (!boardInteractive()) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const sq = sqAtEvent(e);
+  if (!sq) return;
+  const ch = new Chess();
+  ch.load(viewFen());
+  if (ch.game_over()) return;
+
+  if (state.sel && state.sel.targets.some((t) => t.to === sq)) {
+    e.preventDefault();
+    attemptMove(state.sel.sq, sq);
+    return;
+  }
+  const p = ch.get(sq);
+  if (p && p.color === ch.turn()) {
+    const wasSel = !!(state.sel && state.sel.sq === sq);
+    const seen = {};
+    const targets = [];
+    ch.moves({ square: sq, verbose: true }).forEach((m) => {
+      if (seen[m.to]) return;
+      seen[m.to] = 1;
+      targets.push({ to: m.to, cap: !!m.captured });
+    });
+    state.sel = { sq, targets };
+    state.drag = { sq, pid: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false, ghost: null, wasSel, piece: p };
+    try { $('#board-box').setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    e.preventDefault();
+    renderBoard();
+  } else if (state.sel) {
+    state.sel = null;
+    renderBoard();
+  }
+}
+
+function onBoardMove(e) {
+  const d = state.drag;
+  if (!d || e.pointerId !== d.pid) return;
+  if (!d.moved) {
+    if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < DRAG_PX) return;
+    d.moved = true;
+    const b = $('#board');
+    const size = (b.clientWidth / 8) * 1.1;
+    const gh = document.createElement('div');
+    gh.className = 'ghost';
+    gh.style.setProperty('--sq', size + 'px');
+    gh.style.width = size + 'px';
+    gh.style.height = size + 'px';
+    gh.innerHTML = pieceHtml(d.piece.type, d.piece.color);
+    document.body.appendChild(gh);
+    d.ghost = gh;
+    const src = b.querySelector('.sq[data-sq="' + d.sq + '"]');
+    if (src) src.classList.add('dragsrc');
+  }
+  d.ghost.style.left = e.clientX + 'px';
+  d.ghost.style.top = e.clientY + 'px';
+}
+
+function endDrag(e, cancel) {
+  const d = state.drag;
+  if (!d) return;
+  if (e && e.pointerId !== d.pid) return;
+  state.drag = null;
+  if (d.ghost) d.ghost.remove();
+  try { $('#board-box').releasePointerCapture(d.pid); } catch (err) { /* ignore */ }
+  if (cancel) { renderBoard(); return; }
+  const to = e ? sqAtEvent(e) : null;
+  if (d.moved) {
+    if (to && to !== d.sq && state.sel && state.sel.targets.some((t) => t.to === to)) attemptMove(d.sq, to);
+    else { state.sel = null; renderBoard(); }
+  } else if (d.wasSel) {
+    state.sel = null;
+    renderBoard();
+  } else {
+    renderBoard();
+  }
+}
+
+function attemptMove(from, to) {
+  const ch = new Chess();
+  ch.load(viewFen());
+  const list = ch.moves({ square: from, verbose: true }).filter((m) => m.to === to);
+  if (!list.length) { state.sel = null; renderBoard(); return; }
+  if (list[0].promotion) { openPromo(from, to, ch.turn()); return; }
+  commitMove(from, to, null);
+}
+
+function openPromo(from, to, color) {
+  closePromo();
+  state.promo = { from, to, color };
+  const box = $('#board-box');
+  const el = document.createElement('div');
+  el.id = 'promo';
+  el.className = 'promo';
+  el.innerHTML = '<div class="promo-row" style="--sq:' + Math.round(Math.min(64, box.clientWidth / 6)) + 'px">' +
+    ['q', 'r', 'b', 'n'].map((t) =>
+      '<button class="promo-btn" data-promo="' + t + '" aria-label="Promote to ' + NAME[t] + '">' + pieceHtml(t, color) + '</button>'
+    ).join('') + '</div>';
+  box.appendChild(el);
+}
+
+function closePromo() {
+  state.promo = null;
+  const el = document.getElementById('promo');
+  if (el) el.remove();
+}
+
+/* ---------- guided openings (Learn) ---------- */
+function buildLesson(def) {
+  const ch = new Chess();
+  const fens = [ch.fen()];
+  const moves = [];
+  const toks = def.moves.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < toks.length; i++) {
+    const m = ch.move(toks[i], { sloppy: true });
+    if (!m) { console.warn('[ChessLens] lesson line stopped at', def.name, toks[i]); break; }
+    moves.push(m);
+    fens.push(ch.fen());
+  }
+  const bk = ensureBook();
+  const names = [null];
+  let cur = null;
+  for (let i = 1; i < fens.length; i++) {
+    const nm = bk.names.get(posKey(fens[i]));
+    if (nm) cur = nm;
+    names.push(cur);
+  }
+  return { def, fens, moves, names, idx: 0, prevFlipped: state.flipped };
+}
+
+function startLesson(id) {
+  const def = LESSONS.find((l) => l.id === id);
+  if (!def) return;
+  clearTransient();
+  closeSheet();
+  const L = buildLesson(def);
+  state.lesson = L;
+  state.flipped = def.side === 'b';
+  render();
+}
+
+function closeLesson() {
+  const L = state.lesson;
+  if (!L) return;
+  state.lesson = null;
+  state.flipped = L.prevFlipped;
+  render();
+}
+
+function lessonGo(i) {
+  const L = state.lesson;
+  if (!L) return;
+  const np = clamp(i, 0, L.moves.length);
+  if (np === L.idx) return;
+  const delta = np - L.idx;
+  L.idx = np;
+  if (delta === 1) {
+    const m = L.moves[np - 1];
+    state.anim = moveAnim(m, false);
+    soundFor(m);
+  } else if (delta === -1) {
+    state.anim = moveAnim(L.moves[np], true);
+  }
+  render();
+}
+
+function renderLearnTab() {
+  const el = $('#learn-list');
+  if (!el) return;
+  el.innerHTML = LESSONS.map((l) =>
+    '<button class="game lesson-item" data-lesson="' + esc(l.id) + '">' +
+    '<span class="gcol ' + l.side + '"></span>' +
+    '<span class="gmain"><b>' + esc(l.name) + '</b><small>' + esc(l.blurb) + '</small></span>' +
+    '<span class="gres lside">' + (l.side === 'w' ? 'White' : 'Black') + '</span></button>'
+  ).join('');
+}
+
+/* ---------- cards + mode bar ---------- */
+function exploreCardHtml() {
+  const ex = state.explore;
+  const g = state.game;
+  const fen = ex.fens[ex.idx];
+  const a = ex.evals[fen] || null;
+  const mv = ex.idx > 0 ? ex.moves[ex.idx - 1] : null;
+  let h = '<div class="card-head"><div class="badge-lg whatif">?</div><div class="card-title">' +
+    (mv ? esc(mv.san) : 'Starting point') +
+    '<small style="color:#ffb02e">What if \u2014 exploring a different line</small></div>' +
+    (a ? '<div class="chip-eval' + (a.cp < 0 ? ' neg' : '') + '">' + esc(fmtEval(a)) + '</div>' : '') + '</div>';
+
+  if (ex.error) {
+    h += '<p class="note">The engine could not be loaded, so this line can\u2019t be evaluated right now.</p>';
+  } else if (!a) {
+    h += '<p class="card-text"><span class="spin"></span>Evaluating this position\u2026</p>';
+  } else if (a.mate === 0) {
+    h += '<p class="card-text">Checkmate.</p>';
+  } else if (!a.best) {
+    h += '<p class="card-text">The game is drawn here.</p>';
+  } else {
+    const ch = new Chess();
+    ch.load(fen);
+    const sans = pvToSan(fen, a.pv && a.pv.length ? a.pv : [a.best], 4);
+    h += '<p class="card-text">' + esc(evalSentence(a)) + '</p>';
+    if (sans.length) {
+      h += '<div class="hint"><span class="swatch"></span>' + (ch.turn() === 'w' ? 'White' : 'Black') +
+        '\u2019s best reply: <b>' + esc(sans[0]) + '</b>' +
+        (sans.length > 1 ? ' <span class="muted">(' + esc(sans.join(' ')) + ')</span>' : '') + '</div>';
+    }
+  }
+
+  if (g && ex.basePly < g.moves.length && ex.idx >= 1) {
+    const gm = g.moves[ex.basePly];
+    const ga = state.analysis[ex.basePly + 1];
+    h += '<div class="hint">In the game: <b>' + esc(gm.san) + '</b>' +
+      (ga ? ' <span class="muted">(' + esc(fmtEval(ga)) + ')</span>' : '') + '</div>';
+  }
+  h += '<p class="tip">Drag or tap pieces to keep exploring \u00B7 use &lt; &gt; to step through your line.</p>';
+  h += '<button class="btn primary wide" data-back-game>Back to the game</button>';
+  return h;
+}
+
+function lessonCardHtml() {
+  const L = state.lesson;
+  const def = L.def;
+  const total = L.moves.length;
+  const i = L.idx;
+  const sideName = def.side === 'w' ? 'White' : 'Black';
+  let h = '';
+  if (i === 0) {
+    h += '<div class="card-head"><div class="badge-lg lesson">\u265E' + TEXT_VS + '</div><div class="card-title">' + esc(def.name) +
+      '<small style="color:var(--accent)">Learn \u00B7 you play ' + sideName + '</small></div></div>';
+    h += '<p class="card-text">' + esc(def.blurb) + ' Press <b>&gt;</b> to play through the main line, one move at a time (' + total + ' moves).</p>';
+  } else {
+    const m = L.moves[i - 1];
+    const num = Math.ceil(i / 2);
+    const white = m.color === 'w';
+    h += '<div class="card-head"><div class="badge-lg lesson">' + num + '</div><div class="card-title">' + esc(m.san) +
+      '<small style="color:var(--muted)">Move ' + num + (white ? '' : '\u2026') + ' \u00B7 ' + (white ? 'White' : 'Black') + '</small></div></div>';
+    h += '<p class="card-text">' + esc((def.notes && def.notes[i - 1]) ||
+      describeMove({ move: m, prev: i > 1 ? L.moves[i - 2] : null, color: m.color })) + '</p>';
+    const nm = L.names[i];
+    if (nm) {
+      h += '<div class="hint"><span class="swatch" style="background:' + CLS.book.color + '"></span>Opening: <b style="color:#d2a679">' + esc(nm) + '</b></div>';
+    }
+  }
+  h += '<div class="bar lbar"><i style="width:' + Math.round((i / Math.max(1, total)) * 100) + '%"></i></div>';
+  if (i === total) {
+    h += '<p class="note" style="color:#d2a679">Line complete \u2014 from here the game branches into many plans. Replay it or try another opening.</p>' +
+      '<div class="row gap"><button class="btn ghost grow" data-lesson-restart>Replay</button>' +
+      '<button class="btn primary grow" data-open-learn>More openings</button></div>';
+  }
+  return h;
+}
+
+function renderModeBar() {
+  const bar = $('#explore-bar');
+  if (!bar) return;
+  const L = state.lesson;
+  const ex = state.explore;
+  const mv = $('#moves');
+  if (mv) mv.hidden = !!L;
+  bar.hidden = !(L || ex);
+  if (!L && !ex) return;
+  bar.classList.toggle('lesson', !!L);
+  $('#mode-badge').textContent = L ? 'Learn' : 'What if';
+  $('#mode-line').textContent = L
+    ? L.def.name + ' \u00B7 ' + L.idx + '/' + L.moves.length
+    : (ex.moves.length ? sanLine(ex.fens[0], ex.moves.map((m) => m.san)) : 'Exploring a different line');
+  $('#btn-back-game').hidden = !!L;
+  $('#btn-close-lesson').hidden = !L;
+}
+
 async function waitForChess() {
   for (let i = 0; i < 120; i++) {
     if (typeof Chess === 'function') return true;
@@ -2256,10 +3222,10 @@ function wireEvents() {
   $('#btn-import').addEventListener('click', () => openSheet('import'));
   $('#btn-settings').addEventListener('click', openSettings);
   $('#btn-flip').addEventListener('click', () => { state.flipped = !state.flipped; render(); });
-  $('#btn-first').addEventListener('click', () => goTo(0));
-  $('#btn-prev').addEventListener('click', () => goTo(state.ply - 1));
-  $('#btn-next').addEventListener('click', () => goTo(state.ply + 1));
-  $('#btn-last').addEventListener('click', () => goTo(state.game ? state.game.moves.length : 0));
+  $('#btn-first').addEventListener('click', navFirst);
+  $('#btn-prev').addEventListener('click', navPrev);
+  $('#btn-next').addEventListener('click', navNext);
+  $('#btn-last').addEventListener('click', navLast);
 
   $('#moves').addEventListener('click', (e) => {
     const b = e.target.closest('.mv');
@@ -2267,7 +3233,38 @@ function wireEvents() {
   });
   $('#card').addEventListener('click', (e) => {
     if (e.target.closest('[data-open-import]')) openSheet('import');
+    else if (e.target.closest('[data-open-learn]')) openSheet('learn');
+    else if (e.target.closest('[data-back-game]')) exitExplore();
+    else if (e.target.closest('[data-lesson-restart]')) lessonGo(0);
   });
+  $('#btn-back-game').addEventListener('click', exitExplore);
+  $('#btn-close-lesson').addEventListener('click', closeLesson);
+  $('#learn-list').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-lesson]');
+    if (b) startLesson(b.dataset.lesson);
+  });
+
+  /* What-if: tap-tap or drag a piece on the board */
+  const bb = $('#board-box');
+  bb.addEventListener('pointerdown', onBoardDown);
+  bb.addEventListener('pointermove', onBoardMove);
+  bb.addEventListener('pointerup', (e) => endDrag(e, false));
+  bb.addEventListener('pointercancel', (e) => endDrag(e, true));
+  bb.addEventListener('lostpointercapture', (e) => { if (state.drag) endDrag(e, true); });
+  bb.addEventListener('click', (e) => {
+    if (!state.promo) return;
+    const b = e.target.closest('[data-promo]');
+    if (b) {
+      const p = state.promo;
+      closePromo();
+      commitMove(p.from, p.to, b.dataset.promo);
+      return;
+    }
+    if (e.target.closest('#promo')) { closePromo(); state.sel = null; renderBoard(); }
+  });
+
+  /* browsers only allow audio after a user gesture: prepare the audio context on the first tap */
+  document.addEventListener('pointerdown', () => { if (state.prefs.sound) sfx.ensure(); }, { once: true });
 
   /* advantage graph (board view) + summary shortcut */
   bindGraph($('#graph'), (p) => goTo(p));
@@ -2337,6 +3334,10 @@ function wireEvents() {
       setMsg('#profile-msg', 'Active profile: ' + n + '.');
       return;
     }
+    const en = e.target.closest('[data-engine-id]');
+    if (en) { setEngineLevel(en.dataset.engineId); return; }
+    const sd = e.target.closest('[data-sound-id]');
+    if (sd) { setSound(sd.dataset.soundId === 'on'); return; }
     const bt = e.target.closest('[data-board-id]');
     if (bt) { setPref('board', bt.dataset.boardId); return; }
     const pc = e.target.closest('[data-piece-id]');
@@ -2349,10 +3350,11 @@ function wireEvents() {
     if (anySheetOpen()) { if (e.key === 'Escape') closeSheet(); return; }
     const tag = (document.activeElement && document.activeElement.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if (e.key === 'ArrowLeft') goTo(state.ply - 1);
-    else if (e.key === 'ArrowRight') goTo(state.ply + 1);
-    else if (e.key === 'Home') goTo(0);
-    else if (e.key === 'End') goTo(state.game ? state.game.moves.length : 0);
+    if (e.key === 'ArrowLeft') navPrev();
+    else if (e.key === 'ArrowRight') navNext();
+    else if (e.key === 'Home') navFirst();
+    else if (e.key === 'End') navLast();
+    else if (e.key === 'Escape') { if (state.lesson) closeLesson(); else exitExplore(); }
     else if (e.key === 'f') { state.flipped = !state.flipped; render(); }
   });
 
@@ -2394,7 +3396,7 @@ async function boot() {
     return;
   }
 
-  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V7) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
+  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V8) || lsGet(LEGACY_PGN_V7) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
   let restored = false;
   if (saved) restored = !!loadGame(saved, {}).ok;
   cleanupLegacyStorage();
