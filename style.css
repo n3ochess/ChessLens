@@ -146,6 +146,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 }
 .pc.w{color:var(--pw-fill);-webkit-text-stroke:calc(var(--sq)*var(--pw-sw)) var(--pw-stroke);text-shadow:var(--pw-shadow)}
 .pc.b{color:var(--pb-fill);-webkit-text-stroke:calc(var(--sq)*var(--pb-sw)) var(--pb-stroke);text-shadow:var(--pb-shadow)}
+.pc-img{
+  position:relative;z-index:2;width:86%;height:86%;object-fit:contain;
+  pointer-events:none;user-select:none;-webkit-user-drag:none;
+  filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.35));
+}
 #overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:5}
 
 /* ---------- commentary card ---------- */
