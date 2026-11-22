@@ -1,7 +1,7 @@
 /* ChessLens service worker — app shell + CDN assets cached for offline use */
 'use strict';
 
-const VERSION = 'v8';
+const VERSION = 'v9';
 const SHELL_CACHE = 'chesslens-shell-' + VERSION;
 const CDN_CACHE = 'chesslens-cdn-' + VERSION; // must match CDN_CACHE in app.js
 
@@ -46,6 +46,21 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keep = [SHELL_CACHE, CDN_CACHE];
     const names = await caches.keys();
+    /* Carry the engine downloads (Stockfish js/wasm, chess.js) over from older CDN caches,
+       so offline users do not need to download them again after the update */
+    try {
+      const cdn = await caches.open(CDN_CACHE);
+      for (const n of names.filter((x) => x.startsWith('chesslens-cdn-') && !keep.includes(x))) {
+        const old = await caches.open(n);
+        const reqs = await old.keys();
+        for (const r of reqs) {
+          if (await cdn.match(r)) continue;
+          const res = await old.match(r);
+          if (res) await cdn.put(r, res);
+        }
+      }
+    } catch (err) { /* best effort */ }
+    /* then drop every older chesslens-* cache (v8 and earlier) */
     await Promise.all(names.filter((n) => n.startsWith('chesslens-') && !keep.includes(n)).map((n) => caches.delete(n)));
     await self.clients.claim();
   })());
