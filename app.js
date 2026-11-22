@@ -6,15 +6,19 @@ const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const DEPTH = 11;
 const MOVETIME_MS = 220;
 
-/* localStorage keys (v6) + legacy keys migrated/cleaned on boot */
-const LS_PROFILES = 'chesslens.profiles.v6';
-const LS_PREFS = 'chesslens.prefs.v6';
-const LS_PGN = 'chesslens.lastpgn.v6';
-const LS_CACHE = 'chesslens.cache.v6';
+/* localStorage keys (v7) + legacy keys migrated/cleaned on boot */
+const LS_PROFILES = 'chesslens.profiles.v7';
+const LS_PREFS = 'chesslens.prefs.v7';
+const LS_PGN = 'chesslens.lastpgn.v7';
+const LS_CACHE = 'chesslens.cache.v7';
+const LEGACY_PROFILES = 'chesslens.profiles.v6';
+const LEGACY_PREFS = 'chesslens.prefs.v6';
 const LEGACY_USER = 'chesslens.username';
+const LEGACY_PGN_V6 = 'chesslens.lastpgn.v6';
 const LEGACY_PGN = 'chesslens.lastpgn';
+const LEGACY_CACHE_V6 = 'chesslens.cache.v6';
 const LEGACY_CACHE = 'chesslens.cache.v5';
-const CDN_CACHE = 'chesslens-cdn-v6'; // must match sw.js
+const CDN_CACHE = 'chesslens-cdn-v7'; // must match sw.js
 const MAX_CACHED_GAMES = 10;
 const MAX_PROFILES = 20;
 const USER_RE = /^[A-Za-z0-9_-]{2,30}$/;
@@ -26,11 +30,27 @@ const BOARD_THEMES = [
   { id: 'midnight', name: 'Midnight', light: '#8d99ab', dark: '#475569' }
 ];
 const PIECE_STYLES = [
+  { id: 'neo',     name: 'Neo' },
   { id: 'classic', name: 'Classic' },
   { id: 'bold',    name: 'Bold' },
   { id: 'flat',    name: 'Flat' },
   { id: 'gold',    name: 'Gold' }
 ];
+
+const NEO_PIECE_FILE = {
+  wp: 'WhitePawn.png',
+  wn: 'WhiteKnight.png',
+  wb: 'WhiteBishop.png',
+  wr: 'WhiteRook.png',
+  wq: 'WhiteQueen.png',
+  wk: 'WhiteKing.png',
+  bp: 'BlackPawn.png',
+  bn: 'BlackKnight.png',
+  bb: 'BlackBishop.png',
+  br: 'BlackRook.png',
+  bq: 'BlackQueen.png',
+  bk: 'BlackKing.png'
+};
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const NAME = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
@@ -141,15 +161,27 @@ const state = {
   listLoadingFor: '',
   username: '',
   profiles: [],
-  prefs: { board: 'green', pieces: 'classic' }
+  prefs: { board: 'green', pieces: 'neo' }
 };
+
+function pieceHtml(type, color, styleOverride) {
+  const style = styleOverride || state.prefs.pieces;
+  if (style === 'neo') {
+    const file = NEO_PIECE_FILE[color + type];
+    if (file) {
+      return '<img class="pc-img" src="./pieces/neo/' + file + '" alt="" draggable="false">';
+    }
+  }
+  return '<span class="pc ' + color + '">' + GLYPH[type] + TEXT_VS + '</span>';
+}
 
 /* =====================================================================
    Preferences (board theme + piece style)
    ===================================================================== */
 function loadPrefs() {
   try {
-    const o = JSON.parse(lsGet(LS_PREFS) || '{}');
+    const raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS);
+    const o = JSON.parse(raw || '{}');
     if (o && BOARD_THEMES.some((t) => t.id === o.board)) state.prefs.board = o.board;
     if (o && PIECE_STYLES.some((s) => s.id === o.pieces)) state.prefs.pieces = o.pieces;
   } catch (e) { /* ignore */ }
@@ -164,6 +196,8 @@ function setPref(key, val) {
   lsSet(LS_PREFS, JSON.stringify(state.prefs));
   applyPrefs();
   renderAppearance();
+  buildPreview(true);
+  renderBoard();
 }
 
 /* =====================================================================
@@ -181,7 +215,7 @@ function saveProfiles() {
 function loadProfiles() {
   let list = [];
   let active = '';
-  const raw = lsGet(LS_PROFILES);
+  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES);
   try {
     if (raw) {
       const o = JSON.parse(raw);
@@ -202,7 +236,7 @@ function loadProfiles() {
   state.profiles = list;
   const match = list.find((n) => n.toLowerCase() === active.toLowerCase());
   state.username = match || list[0] || '';
-  if (!raw && list.length) saveProfiles();
+  if (!lsGet(LS_PROFILES) && list.length) saveProfiles();
 }
 
 function setActiveProfile(name) {
@@ -307,15 +341,16 @@ function renderAppearance() {
   ps.innerHTML = PIECE_STYLES.map((s) =>
     '<button class="opt" data-piece-id="' + s.id + '" aria-pressed="' + (state.prefs.pieces === s.id) + '">' +
     '<span class="ptile" data-pieces="' + s.id + '">' +
-    '<span class="sq l"><span class="pc w">' + GLYPH.n + TEXT_VS + '</span></span>' +
-    '<span class="sq d"><span class="pc b">' + GLYPH.n + TEXT_VS + '</span></span></span>' +
+    '<span class="sq l">' + pieceHtml('n', 'w', s.id) + '</span>' +
+    '<span class="sq d">' + pieceHtml('n', 'b', s.id) + '</span></span>' +
     '<span>' + esc(s.name) + '</span></button>'
   ).join('');
 }
 
-function buildPreview() {
+function buildPreview(force) {
   const el = $('#prev-board');
-  if (!el || el.dataset.built) return;
+  if (!el) return;
+  if (!force && el.dataset.built === state.prefs.pieces) return;
   const rows = ['rnbqkbnr', 'pppppppp', 'PPPPPPPP', 'RNBQKBNR'];
   let h = '';
   rows.forEach((row, r) => {
@@ -323,11 +358,11 @@ function buildPreview() {
       const ch = row[c];
       const color = ch === ch.toLowerCase() ? 'b' : 'w';
       const light = (r + c) % 2 === 0;
-      h += '<div class="sq ' + (light ? 'l' : 'd') + '"><span class="pc ' + color + '">' + GLYPH[ch.toLowerCase()] + TEXT_VS + '</span></div>';
+      h += '<div class="sq ' + (light ? 'l' : 'd') + '">' + pieceHtml(ch.toLowerCase(), color) + '</div>';
     }
   });
   el.innerHTML = h;
-  el.dataset.built = '1';
+  el.dataset.built = state.prefs.pieces;
 }
 
 function parsePgn(text) {
@@ -1034,7 +1069,7 @@ function renderBoard() {
       html += '<div class="' + cls + '" data-sq="' + sq + '">';
       if (dc === 0) html += '<span class="co r">' + rank + '</span>';
       if (dr === 7) html += '<span class="co f">' + 'abcdefgh'[file] + '</span>';
-      if (p) html += '<span class="pc ' + p.color + '">' + GLYPH[p.type] + TEXT_VS + '</span>';
+      if (p) html += pieceHtml(p.type, p.color);
       html += '</div>';
     }
   }
@@ -1437,7 +1472,6 @@ async function onLoadGames() {
   try {
     const games = await fetchRecentGames(username);
     if (req !== state.listReq) return;
-    // A username that loads successfully becomes the active saved profile.
     const saved = addProfile(username);
     input.value = saved.name || username;
     state.listGames = games;
@@ -1601,7 +1635,8 @@ function wireEvents() {
 }
 
 async function boot() {
-  lsRemove(LEGACY_CACHE); // old v5 analysis cache is regenerable
+  lsRemove(LEGACY_CACHE);
+  lsRemove(LEGACY_CACHE_V6);
   loadPrefs();
   applyPrefs();
   loadProfiles();
@@ -1612,9 +1647,10 @@ async function boot() {
     return;
   }
 
-  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN);
+  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
   let restored = false;
   if (saved) restored = !!loadGame(saved, {}).ok;
+  lsRemove(LEGACY_PGN_V6);
   lsRemove(LEGACY_PGN);
   lsRemove(LEGACY_USER);
   if (!restored) {
