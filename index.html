@@ -168,3 +168,51 @@
       <div id="report-chips"></div>
       <div id="report-stats"></div>
     </div>
+    <div class="report-foot">
+      <button id="btn-view-board" class="btn primary wide">View board</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings drawer -->
+<div id="settings" class="sheet" hidden>
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" data-close aria-label="Close">✕</button>
+    </div>
+
+    <section class="set-sec">
+      <h3>Chess.com profiles</h3>
+      <p class="set-help">Save your usernames and switch between them. The active profile is used to detect your color and to load recent games.</p>
+      <div id="profile-list" class="plist"></div>
+      <div class="row gap">
+        <input id="in-profile" class="grow" type="text" inputmode="text" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Add username" aria-label="Chess.com username to add">
+        <button id="btn-add-profile" class="btn primary">Add</button>
+      </div>
+      <p id="profile-msg" class="msg" role="status"></p>
+    </section>
+
+    <section class="set-sec">
+      <h3>Preview</h3>
+      <div id="prev-board" class="prev-board" role="img" aria-label="Board and pieces preview"></div>
+    </section>
+
+    <section class="set-sec">
+      <h3>Board theme</h3>
+      <div id="board-themes" class="opts"></div>
+    </section>
+
+    <section class="set-sec">
+      <h3>Piece style</h3>
+      <div id="piece-styles" class="opts"></div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/chess.js@0.10.3/chess.min.js';document.head.appendChild(s);"></script>
+<script src="app.js" defer></script>
+</body>
+</html>
