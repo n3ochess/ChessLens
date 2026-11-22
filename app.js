@@ -14,6 +14,7 @@ const LS_PROFILES = 'chesslens.profiles.v8';
 const LS_PREFS = 'chesslens.prefs.v8';
 const LS_PGN = 'chesslens.lastpgn.v8';
 const LS_CACHE = 'chesslens.cache.v8';
+const LS_LIB = 'chesslens.library.v8';
 const LEGACY_PROFILES_V7 = 'chesslens.profiles.v7';
 const LEGACY_PREFS_V7 = 'chesslens.prefs.v7';
 const LEGACY_PGN_V7 = 'chesslens.lastpgn.v7';
@@ -28,6 +29,7 @@ const LEGACY_CACHE = 'chesslens.cache.v5';
 const CDN_CACHE = 'chesslens-cdn-v8'; // must match sw.js
 const MAX_CACHED_GAMES = 10;
 const MAX_PROFILES = 20;
+const MAX_LIBRARY = 30;
 const USER_RE = /^[A-Za-z0-9_-]{2,30}$/;
 
 const BOARD_THEMES = [
@@ -75,6 +77,8 @@ const CLS = {
   blunder:    { label: 'Blunder',    sym: '??', color: '#ca3431', fg: '#fff' }
 };
 const CLS_ORDER = ['book', 'brilliant', 'great', 'best', 'good', 'inaccuracy', 'mistake', 'blunder'];
+/* Only "bad-side" classes take part in tactical capping */
+const CLS_RANK = { best: 0, good: 1, inaccuracy: 2, mistake: 3, blunder: 4 };
 
 const ENGINE_SOURCES = [
   { name: 'Stockfish WASM (cdnjs)',
@@ -351,6 +355,8 @@ const state = {
   listLoadingFor: '',
   username: '',
   profiles: [],
+  library: [],
+  repSel: null,
   prefs: { board: 'green', pieces: 'neo' }
 };
 
@@ -440,8 +446,8 @@ function setActiveProfile(name) {
     state.listGames = [];
     state.listUser = '';
     state.listLoadingFor = '';
-    $('#glist').innerHTML = '';
-    setMsg('#user-msg', '');
+    renderGamesTab();
+    setUserMsg('');
     $('#btn-load-games').disabled = false;
     refreshColor();
   }
@@ -652,6 +658,71 @@ function cleanupLegacyStorage() {
   if (lsGet(LS_PGN) !== null) { lsRemove(LEGACY_PGN_V7); lsRemove(LEGACY_PGN_V6); lsRemove(LEGACY_PGN); }
 }
 
+/* =====================================================================
+   Game library (games imported / opened on this device)
+   ===================================================================== */
+function loadLibrary() {
+  try {
+    const o = JSON.parse(lsGet(LS_LIB) || '[]');
+    state.library = Array.isArray(o)
+      ? o.filter((e) => e && typeof e.id === 'string' && typeof e.pgn === 'string').slice(0, MAX_LIBRARY)
+      : [];
+  } catch (e) { state.library = []; }
+}
+function saveLibrary() {
+  lsSet(LS_LIB, JSON.stringify(state.library));
+}
+
+function pgnDate(h) {
+  const d = String((h && (h.EndDate || h.UTCDate || h.Date)) || '');
+  const m = d.match(/^(\d{4})\.(\d{2})\.(\d{2})$/);
+  if (m) {
+    const ts = Date.UTC(+m[1], +m[2] - 1, +m[3], 12);
+    if (Number.isFinite(ts)) return { ts, dl: null };
+  }
+  const y = d.match(/^(\d{4})/);
+  if (y) return { ts: null, dl: y[1] };
+  return { ts: Date.now(), dl: null };
+}
+
+function fmtDateFull(ts) {
+  try { return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); }
+  catch (e) { return ''; }
+}
+function entryDate(e) {
+  return e.ts ? fmtDateFull(e.ts) : (e.dl || '');
+}
+
+function addToLibrary(pgn, g, meta) {
+  try {
+    if (!pgn || !g || String(pgn).length > 60000) return;
+    meta = meta || {};
+    const h = g.headers || {};
+    const d = meta.ts ? { ts: meta.ts, dl: null } : pgnDate(h);
+    const entry = {
+      id: g.key,
+      pgn: String(pgn),
+      white: h.White || 'White',
+      black: h.Black || 'Black',
+      result: h.Result || '*',
+      src: meta.src || 'pgn',
+      ts: d.ts || null,
+      dl: d.dl || null
+    };
+    const old = state.library.find((e) => e.id === entry.id);
+    if (old && (old.ts || old.dl)) { entry.ts = old.ts; entry.dl = old.dl; }
+    state.library = [entry].concat(state.library.filter((e) => e.id !== entry.id)).slice(0, MAX_LIBRARY);
+    saveLibrary();
+    renderGamesTab();
+  } catch (e) { /* ignore */ }
+}
+
+function removeFromLibrary(id) {
+  state.library = state.library.filter((e) => e.id !== id);
+  saveLibrary();
+  renderGamesTab();
+}
+
 async function getAsset(url) {
   let cache = null;
   try { cache = await caches.open(CDN_CACHE); } catch (e) { cache = null; }
@@ -860,6 +931,11 @@ async function analyzePosition(g, i) {
   };
 }
 
+/* ---------- classification (with tactical adjustments) ---------- */
+function capCls(cls, max) {
+  return (CLS_RANK[cls] != null && CLS_RANK[cls] > CLS_RANK[max]) ? max : cls;
+}
+
 function computeMoveResult(k) {
   const g = state.game;
   const mv = g.moves[k];
@@ -883,11 +959,23 @@ function computeMoveResult(k) {
   /* Theory moves are never penalized by the shallow engine */
   if (g.book && k < g.book.count) {
     state.results[k] = {
-      cls: 'book', loss: 0, winBefore, winAfter, isBest, sac: false, onlyMove: false,
+      cls: 'book', loss: 0, winBefore, winAfter, isBest, sac: false, tactical: false, onlyMove: false,
       bestSan, bestMove, comment: null
     };
     return;
   }
+
+  /* Material context: did the move give material away? */
+  const after = new Chess();
+  after.load(g.fens[k + 1]);
+  const gain = (mv.captured ? VAL[mv.captured] : 0) + (mv.promotion ? VAL[mv.promotion] - 1 : 0);
+  const risk = after.game_over() ? 0 : bestCapture(after).net;
+  const sac = (gain - risk) <= -2;
+
+  /* Mate context (from the mover's point of view) */
+  const mateMineAfter = B.mate != null && B.mate !== 0 && Math.sign(B.mate) === sgn && Math.abs(B.mate) <= 6;
+  const mateTheirsAfter = B.mate != null && B.mate !== 0 && Math.sign(B.mate) === -sgn;
+  const mateMineBefore = A.mate != null && A.mate !== 0 && Math.sign(A.mate) === sgn;
 
   const loss = isBest ? 0 : Math.max(0, winBefore - winAfter);
   const inaccCutoff = k < 6 ? 8 : 5;
@@ -898,18 +986,24 @@ function computeMoveResult(k) {
   else if (loss < 10) cls = 'inaccuracy';
   else if (loss < 20) cls = 'mistake';
   else cls = 'blunder';
-  if ((cls === 'inaccuracy' || cls === 'mistake' || cls === 'blunder') && winBefore >= 93 && winAfter >= 75) cls = 'good';
 
-  let sac = false;
+  /* Tactical reading: a move that keeps a decisive edge, a forced mate,
+     or real compensation for a sacrifice is not a serious error. */
+  const original = cls;
+  if (CLS_RANK[cls] >= 2 && !mateTheirsAfter) {
+    if (winBefore >= 93 && winAfter >= 75) cls = capCls(cls, 'good');
+    if (mateMineAfter) cls = capCls(cls, 'good');
+    else if (winAfter >= 90) cls = capCls(cls, 'good');
+    else if (winAfter >= 80) cls = capCls(cls, 'inaccuracy');
+    if (sac && winAfter >= 60) cls = capCls(cls, 'inaccuracy');
+  }
+  const tactical = cls !== original;
+
   let onlyMove = false;
   if (cls === 'best' || cls === 'good') {
-    const after = new Chess();
-    after.load(g.fens[k + 1]);
-    const gain = (mv.captured ? VAL[mv.captured] : 0) + (mv.promotion ? VAL[mv.promotion] - 1 : 0);
-    const risk = after.game_over() ? 0 : bestCapture(after).net;
-    sac = (gain - risk) <= -2;
-    const mateForMe = A.mate != null && A.mate !== 0 && Math.sign(A.mate) === sgn;
-    if (sac && loss <= 2 && winAfter >= 40 && (winBefore <= 92 || mateForMe)) {
+    /* Brilliant = real sacrifice + real compensation + not already crushing */
+    const compensated = mateMineAfter || winAfter >= 55;
+    if (sac && loss <= 1.5 && compensated && winAfter >= winBefore - 3 && (winBefore <= 85 || mateMineAfter)) {
       cls = 'brilliant';
     } else if (isBest && cls === 'best' && A.second) {
       const prev = k > 0 ? g.moves[k - 1] : null;
@@ -919,7 +1013,10 @@ function computeMoveResult(k) {
     }
   }
 
-  state.results[k] = { cls, loss, winBefore, winAfter, isBest, sac, onlyMove, bestSan, bestMove, comment: null };
+  state.results[k] = {
+    cls, loss, winBefore, winAfter, isBest, sac, tactical, onlyMove,
+    mateBefore: mateMineBefore, bestSan, bestMove, comment: null
+  };
 }
 
 let runChain = Promise.resolve();
@@ -979,6 +1076,7 @@ async function analyzeGame(g, token) {
       state.doneCount = i + 1;
       setStatus('Scanning positions ' + (i + 1) + ' / ' + n + ' (depth ' + DEPTH + ')', (i + 1) / n);
       if (Math.abs(state.ply - i) <= 1) render();
+      else scheduleGraphs();
     }
     saveCache(g.key, state.analysis);
     hideStatus();
@@ -1042,6 +1140,11 @@ function generateCommentary(c) {
 
   if (cls === 'best' || cls === 'good' || cls === 'great' || cls === 'brilliant') {
     const flags = m.flags || '';
+    const tacticalSac = c.sac && cls !== 'brilliant';
+    if (tacticalSac) {
+      if (keptMate) extras.push('It gives up material, but it sets up a forced mate in ' + Math.abs(B.mate) + '.');
+      else if (c.winAfter >= 60) extras.push('It gives up material, but the attack and initiative more than make up for it.');
+    }
     if (m.captured) {
       const recap = c.after.moves({ verbose: true }).some((x) => x.to === m.to && x.captured);
       if (!recap && VAL[m.captured] >= 1 && !(c.prev && c.prev.captured && c.prev.to === m.to)) {
@@ -1060,7 +1163,7 @@ function generateCommentary(c) {
       const th = findThreat(c.fenAfter, c.color);
       if (th) extras.push('It also threatens to win the ' + NAME[th.move.captured] + ' on ' + th.move.to + ' with ' + th.move.san + '.');
     }
-    if (keptMate && extras.length < 2) extras.push(who + ' now has a forced checkmate.');
+    if (keptMate && extras.length < 2 && !tacticalSac) extras.push(who + ' now has a forced checkmate.');
   }
 
   if (cls === 'brilliant') {
@@ -1069,6 +1172,7 @@ function generateCommentary(c) {
       'Brilliant! This sacrifice looks risky but the engine confirms it.',
       'A stunning idea \u2014 the material given up is more than repaid by the attack.'
     ], S));
+    if (keptMate) out.push('It sets up a forced mate in ' + Math.abs(B.mate) + '.');
     out.push(c.winAfter >= 60 ? 'It keeps ' + who + ' firmly in control.' : 'It keeps the balance while creating real problems for ' + opp + '.');
   } else if (cls === 'book') {
     const op = c.opening;
@@ -1101,7 +1205,7 @@ function generateCommentary(c) {
       'A good move, though not the very top choice.',
       'Reasonable \u2014 it doesn\u2019t give anything significant away.'
     ], S));
-    if (c.bestSan && c.loss > 1.5) { out.push('The engine slightly preferred ' + c.bestSan + '.'); bestHandled = true; }
+    if (c.bestSan && c.loss > 1.5 && !(c.tactical && keptMate)) { out.push('The engine slightly preferred ' + c.bestSan + '.'); bestHandled = true; }
   } else {
     const head = {
       inaccuracy: ['A small slip \u2014 it gives back part of the advantage.', 'An inaccuracy: playable, but there was something better.'],
@@ -1116,6 +1220,8 @@ function generateCommentary(c) {
     } else if (mateMine && !keptMate) {
       reason = 'It misses a forced checkmate in ' + Math.abs(A.mate) + (c.bestSan ? ' \u2014 ' + c.bestSan + ' was the way to go.' : '.');
       if (c.bestSan) bestHandled = true;
+    } else if (c.sac && c.tactical) {
+      reason = 'It gives up material for the initiative, and ' + who + ' keeps real compensation, though a cleaner path existed.';
     } else {
       const hang = bestCapture(c.after);
       if (hang.net >= 2 && hang.move) {
@@ -1172,6 +1278,8 @@ function buildContext(k) {
     winBefore: R.winBefore,
     winAfter: R.winAfter,
     isBest: R.isBest,
+    sac: !!R.sac,
+    tactical: !!R.tactical,
     bestSan: R.bestSan,
     bestMove: R.bestMove,
     bestUci: state.analysis[k].best,
@@ -1195,6 +1303,55 @@ function commentFor(k) {
     catch (e) { console.warn(e); R.comment = state.game.moves[k].san + ' \u2014 ' + (CLS[R.cls] || CLS.good).label + '.'; }
   }
   return R.comment;
+}
+
+/* =====================================================================
+   Stats: accuracy, counts and heuristic game rating
+   ===================================================================== */
+function estimateElo(color, st, headers) {
+  if (st.avgLoss == null || st.nb === 0) return null;
+  const c = st.counts;
+  let perf = 3100 * Math.exp(-0.085 * st.avgLoss) - 20 * (c.blunder || 0) - 8 * (c.mistake || 0);
+  perf = clamp(perf, 100, 3000);
+  const base = parseInt(color === 'w' ? headers.WhiteElo : headers.BlackElo, 10);
+  let elo;
+  let basis;
+  if (Number.isFinite(base) && base > 0) {
+    const w = clamp(st.nb / (st.nb + 25), 0.15, 0.6);
+    elo = base * (1 - w) + perf * w;
+    basis = 'base';
+  } else {
+    const w = st.nb / (st.nb + 6);
+    elo = 1200 * (1 - w) + perf * w;
+    basis = 'perf';
+  }
+  return { value: Math.round(clamp(elo, 100, 3200) / 10) * 10, basis };
+}
+
+function computeStats() {
+  const g = state.game;
+  const res = {};
+  ['w', 'b'].forEach((color) => {
+    const counts = {};
+    let accSum = 0;
+    let n = 0;
+    let lossSum = 0;
+    let nb = 0;
+    g.moves.forEach((m, k) => {
+      if (m.color !== color) return;
+      const r = state.results[k];
+      if (!r) return;
+      counts[r.cls] = (counts[r.cls] || 0) + 1;
+      const loss = Number.isFinite(r.loss) ? r.loss : 0;
+      accSum += clamp(103.1668 * Math.exp(-0.04354 * loss) - 3.1669, 0, 100);
+      n++;
+      if (r.cls !== 'book') { lossSum += loss; nb++; }
+    });
+    const st = { counts, n, nb, acc: n ? accSum / n : null, avgLoss: nb ? lossSum / nb : null };
+    st.elo = estimateElo(color, st, g.headers || {});
+    res[color] = st;
+  });
+  return res;
 }
 
 /* =====================================================================
@@ -1392,23 +1549,12 @@ function bestSanForPosition(posIndex, uciOverride) {
 }
 
 function summaryHtml() {
-  const g = state.game;
+  const stats = computeStats();
   const cols = ['w', 'b'].map((color) => {
-    const counts = {};
-    let accSum = 0;
-    let n = 0;
-    g.moves.forEach((m, k) => {
-      if (m.color !== color) return;
-      const r = state.results[k];
-      if (!r) return;
-      counts[r.cls] = (counts[r.cls] || 0) + 1;
-      const loss = Number.isFinite(r.loss) ? r.loss : 0;
-      accSum += clamp(103.1668 * Math.exp(-0.04354 * loss) - 3.1669, 0, 100);
-      n++;
-    });
-    const chips = CLS_ORDER.filter((k) => counts[k]).map((k) =>
-      '<span class="sum-chip"><i style="background:' + CLS[k].color + ';color:' + CLS[k].fg + '">' + esc(CLS[k].sym) + '</i>' + counts[k] + '</span>').join('');
-    const acc = n ? Math.round(accSum / n) + '%' : '\u2013';
+    const st = stats[color];
+    const chips = CLS_ORDER.filter((k) => st.counts[k]).map((k) =>
+      '<span class="sum-chip"><i style="background:' + CLS[k].color + ';color:' + CLS[k].fg + '">' + esc(CLS[k].sym) + '</i>' + st.counts[k] + '</span>').join('');
+    const acc = st.acc != null ? Math.round(st.acc) + '%' : '\u2013';
     return '<div class="sum-col"><h3>' + (color === 'w' ? 'White' : 'Black') + '<span>' + acc + '</span></h3><div class="sum-chips">' + chips + '</div></div>';
   });
   return '<div class="summary">' + cols.join('') + '</div>';
@@ -1545,6 +1691,239 @@ function renderControls() {
   $('#btn-last').disabled = state.ply >= total;
 }
 
+/* =====================================================================
+   Advantage graph (SVG, white win% over the game)
+   ===================================================================== */
+const GW = 600;
+const GH = 150;
+const GRAPH_MARK = { brilliant: 1, great: 1, mistake: 1, blunder: 1 };
+
+function graphHtml(sel) {
+  const g = state.game;
+  if (!g) return '';
+  const n = g.fens.length;
+  let last = -1;
+  for (let i = 0; i < n; i++) { if (state.analysis[i]) last = i; else break; }
+  if (last < 0) return '<div class="graph-empty">The graph appears as the analysis runs\u2026</div>';
+
+  const xs = (i) => (n > 1 ? (i / (n - 1)) * GW : 0);
+  const ys = (i) => GH * (1 - winPct(state.analysis[i].cp) / 100);
+
+  let h = '<svg class="gsvg" viewBox="0 0 ' + GW + ' ' + GH + '" role="img" aria-label="Advantage graph">' +
+    '<rect width="' + GW + '" height="' + GH + '" fill="#3a3835"/>';
+
+  if (last >= 1) {
+    let pts = '';
+    for (let i = 0; i <= last; i++) pts += xs(i).toFixed(1) + ',' + ys(i).toFixed(1) + ' ';
+    h += '<polygon fill="#f2f2f2" points="0,' + GH + ' ' + pts + xs(last).toFixed(1) + ',' + GH + '"/>';
+    h += '<polyline fill="none" stroke="#b8b6b1" stroke-width="1.5" stroke-linejoin="round" points="' + pts + '"/>';
+  }
+  h += '<line x1="0" y1="' + (GH / 2) + '" x2="' + GW + '" y2="' + (GH / 2) + '" stroke="#81b64c" stroke-opacity=".6" stroke-width="1" stroke-dasharray="5 5"/>';
+
+  /* markers for notable moves */
+  g.moves.forEach((m, k) => {
+    const r = state.results[k];
+    if (!r || !GRAPH_MARK[r.cls] || !state.analysis[k + 1]) return;
+    const cl = CLS[r.cls];
+    h += '<circle cx="' + xs(k + 1).toFixed(1) + '" cy="' + ys(k + 1).toFixed(1) + '" r="5" fill="' + cl.color + '" stroke="#262421" stroke-width="1.5"/>';
+  });
+
+  /* selected ply */
+  if (sel != null && sel >= 0 && sel <= last) {
+    const sx = xs(sel).toFixed(1);
+    h += '<line x1="' + sx + '" y1="0" x2="' + sx + '" y2="' + GH + '" stroke="#81b64c" stroke-width="2"/>' +
+         '<circle cx="' + sx + '" cy="' + ys(sel).toFixed(1) + '" r="5.5" fill="#fff" stroke="#81b64c" stroke-width="2.5"/>';
+  }
+  h += '</svg>';
+  return h;
+}
+
+function plyFromEvent(el, e) {
+  const svg = el.querySelector('svg');
+  if (!svg || !state.game) return null;
+  const r = svg.getBoundingClientRect();
+  if (!r.width) return null;
+  const n = state.game.fens.length;
+  return Math.round(clamp((e.clientX - r.left) / r.width, 0, 1) * (n - 1));
+}
+
+function bindGraph(el, handler) {
+  if (!el) return;
+  let dragging = false;
+  el.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    const p = plyFromEvent(el, e);
+    if (p != null) handler(p);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const p = plyFromEvent(el, e);
+    if (p != null) handler(p);
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) =>
+    el.addEventListener(t, () => { dragging = false; }));
+}
+
+function renderGraphMain() {
+  const card = $('#graph-card');
+  const el = $('#graph');
+  if (!card || !el) return;
+  card.hidden = !state.game;
+  if (!state.game) { el.innerHTML = ''; return; }
+  el.innerHTML = graphHtml(state.ply);
+}
+
+let gfxQueued = false;
+function scheduleGraphs() {
+  if (gfxQueued) return;
+  gfxQueued = true;
+  requestAnimationFrame(() => {
+    gfxQueued = false;
+    renderGraphMain();
+    if (!$('#report').hidden) renderReport();
+  });
+}
+
+/* =====================================================================
+   Game summary (report)
+   ===================================================================== */
+function plyInfoHtml(p) {
+  const g = state.game;
+  if (p == null || !g) return '<span class="muted">Tap or drag on the graph to inspect any move.</span>';
+  if (p === 0) return '<b>Start position</b>';
+  const k = p - 1;
+  const mv = g.moves[k];
+  if (!mv) return '';
+  const r = state.results[k];
+  const a = state.analysis[p];
+  const num = (Math.floor(k / 2) + 1) + (mv.color === 'w' ? '.' : '\u2026');
+  let h = '<b>' + num + ' ' + esc(mv.san) + '</b>';
+  if (r && CLS[r.cls]) {
+    const cl = CLS[r.cls];
+    h += '<span class="ipill" style="background:' + cl.color + ';color:' + cl.fg + '">' + esc(cl.sym) + ' ' + cl.label + '</span>';
+  }
+  if (a) h += '<span class="muted">Eval ' + esc(fmtEval(a)) + '</span>';
+  return h;
+}
+
+function keyMomentsHtml() {
+  const g = state.game;
+  const pri = { blunder: 0, brilliant: 1, mistake: 2, great: 3 };
+  const list = [];
+  g.moves.forEach((m, k) => {
+    const r = state.results[k];
+    if (r && pri[r.cls] != null) list.push({ k, cls: r.cls, loss: r.loss || 0 });
+  });
+  if (!list.length) return '';
+  list.sort((a, b) => (pri[a.cls] - pri[b.cls]) || (b.loss - a.loss));
+  const top = list.slice(0, 8).sort((a, b) => a.k - b.k);
+  return '<h3 class="rep-h">Key moments</h3><div class="kchips">' + top.map((t) => {
+    const m = g.moves[t.k];
+    const cl = CLS[t.cls];
+    const num = (Math.floor(t.k / 2) + 1) + (m.color === 'w' ? '.' : '\u2026');
+    return '<button class="kchip" data-ply="' + (t.k + 1) + '" aria-pressed="' + (state.repSel === t.k + 1) + '">' +
+      '<i style="background:' + cl.color + ';color:' + cl.fg + '">' + esc(cl.sym) + '</i>' + esc(num + ' ' + m.san) + '</button>';
+  }).join('') + '</div>';
+}
+
+function renderReportGraph() {
+  const el = $('#report-graph');
+  if (el && state.game) el.innerHTML = graphHtml(state.repSel);
+}
+function renderReportInfo() {
+  const el = $('#report-info');
+  if (el) el.innerHTML = plyInfoHtml(state.repSel);
+}
+function renderReportChips() {
+  const el = $('#report-chips');
+  if (el && state.game) el.innerHTML = keyMomentsHtml();
+}
+
+function selectRep(p) {
+  if (!state.game) return;
+  state.repSel = clamp(p, 0, state.game.moves.length);
+  renderReportGraph();
+  renderReportInfo();
+  renderReportChips();
+}
+
+function renderReport() {
+  const g = state.game;
+  if (!g) return;
+  const h = g.headers || {};
+  const n = g.fens.length;
+  const done = state.doneCount >= n;
+  const pct = Math.round(clamp(state.doneCount / n, 0, 1) * 100);
+
+  /* header: players */
+  const who = (name, elo, c) => '<div class="rep-p"><span class="dot ' + c + '"></span><span class="pname">' + esc(name) + '</span>' +
+    (elo && elo !== '?' ? '<span class="pelo">(' + esc(elo) + ')</span>' : '') + '</div>';
+  $('#report-head').innerHTML = who(h.White || 'White', h.WhiteElo, 'w') + who(h.Black || 'Black', h.BlackElo, 'b');
+
+  /* progress */
+  let prog = '';
+  if (state.engineError) {
+    prog = '<p class="note">The engine could not be loaded, so the summary is unavailable. Connect to the internet and reload.</p>';
+  } else if (!done) {
+    prog = '<div class="status-row"><span>Analyzing\u2026 ' + state.doneCount + ' / ' + n + '</span><span>' + pct + '%</span></div>' +
+      '<div class="bar"><i style="width:' + pct + '%"></i></div>';
+  }
+  $('#report-progress').innerHTML = prog;
+
+  renderReportGraph();
+  renderReportInfo();
+  renderReportChips();
+
+  /* stats */
+  const stats = computeStats();
+  const cols = ['w', 'b'].map((c) => {
+    const st = stats[c];
+    const acc = st.acc != null ? st.acc.toFixed(1) + '%' : '\u2013';
+    const elo = done && st.elo ? String(st.elo.value) : (done ? '\u2013' : '\u2026');
+    return '<div class="rep-col"><div class="rep-who"><span class="dot ' + c + '"></span>' + (c === 'w' ? 'White' : 'Black') + '</div>' +
+      '<div class="rep-big acc">' + acc + '</div><small>Accuracy</small>' +
+      '<div class="rep-big">' + elo + '</div><small>Game rating</small></div>';
+  }).join('');
+
+  const rows = CLS_ORDER.map((k) => {
+    const cw = stats.w.counts[k] || 0;
+    const cb = stats.b.counts[k] || 0;
+    const cl = CLS[k];
+    return '<tr><td class="n' + (cw ? '' : ' zero') + '">' + cw + '</td>' +
+      '<td class="lab"><i style="background:' + cl.color + ';color:' + cl.fg + '">' + esc(cl.sym) + '</i>' + cl.label + '</td>' +
+      '<td class="n' + (cb ? '' : ' zero') + '">' + cb + '</td></tr>';
+  }).join('');
+
+  let html = '<div class="rep-cols">' + cols + '</div>';
+  html += '<table class="rep-table" aria-label="Move classifications"><tbody>' + rows + '</tbody></table>';
+  if (g.book && g.book.opening) {
+    html += '<p class="rep-open">Opening: <b>' + esc(g.book.opening) + '</b> \u00B7 ' + g.book.count + (g.book.count === 1 ? ' book move' : ' book moves') + '</p>';
+  }
+  html += '<p class="rep-note">Game rating is a rough local estimate based on accuracy, average loss per move and the number of mistakes' +
+    (h.WhiteElo || h.BlackElo ? ', blended with the ratings in the game' : '') + '. It is not an official rating.</p>';
+  $('#report-stats').innerHTML = html;
+}
+
+function openReport(sel) {
+  if (!state.game) return;
+  closeSheet();
+  state.repSel = sel == null ? null : clamp(sel, 0, state.game.moves.length);
+  $('#report').hidden = false;
+  document.body.style.overflow = 'hidden';
+  renderReport();
+  const body = $('#report-body');
+  if (body) body.scrollTop = 0;
+}
+
+function onViewBoard() {
+  if (!state.game) { closeSheet(); return; }
+  const p = state.repSel != null ? state.repSel : 0;
+  closeSheet();
+  state.ply = clamp(p, 0, state.game.moves.length);
+  render();
+}
+
 function render() {
   renderBoard();
   renderOverlay();
@@ -1553,6 +1932,8 @@ function render() {
   renderCard();
   renderMoveActive();
   renderControls();
+  renderGraphMain();
+  if ($('#report') && !$('#report').hidden) renderReport();
 }
 
 function setStatus(text, frac) {
@@ -1587,6 +1968,7 @@ function loadGame(pgn, opts) {
   catch (e) { return { error: e.message }; }
   state.game = g;
   state.ply = 0;
+  state.repSel = null;
   state.analysis = new Array(g.fens.length).fill(null);
   state.results = new Array(g.fens.length - 1).fill(null);
   state.doneCount = 0;
@@ -1641,6 +2023,7 @@ function fmtTimeControl(g) {
   return inc ? baseTxt + '+' + inc : (base >= 60 ? baseTxt + ' min' : baseTxt);
 }
 
+/* Chess.com recent games (Games tab) */
 function renderGameList(games, username) {
   const u = username.toLowerCase();
   const list = $('#glist');
@@ -1653,30 +2036,85 @@ function renderGameList(games, username) {
     let word = 'Draw';
     if (me.result === 'win') { res = 'won'; word = 'Won'; }
     else if (DRAW_RESULTS.indexOf(me.result) < 0) { res = 'lost'; word = 'Lost'; }
-    const date = g.end_time ? new Date(g.end_time * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+    const date = g.end_time ? fmtDateFull(g.end_time * 1000) : '';
     const tclass = g.time_class ? cap(g.time_class) : '';
     const btn = document.createElement('button');
     btn.className = 'game';
     btn.dataset.i = String(i);
     btn.innerHTML = '<span class="gcol ' + (iAmWhite ? 'w' : 'b') + '"></span>' +
       '<span class="gmain"><b>' + esc(opp.username || 'Opponent') + ' (' + esc(opp.rating != null ? opp.rating : '?') + ')</b>' +
-      '<small>You ' + esc(me.rating != null ? me.rating : '?') + ' \u00B7 ' + esc([tclass, fmtTimeControl(g)].filter(Boolean).join(' ')) + (date ? ' \u00B7 ' + esc(date) : '') + '</small></span>' +
+      '<small>' + esc([date, 'You ' + (me.rating != null ? me.rating : '?'), [tclass, fmtTimeControl(g)].filter(Boolean).join(' ')].filter(Boolean).join(' \u00B7 ')) + '</small></span>' +
       '<span class="gres ' + res + '">' + word + '</span>';
     list.appendChild(btn);
   });
 }
 
-/* ---------- sheets: import + settings ---------- */
+/* Saved games (Games tab) */
+function libItemHtml(e) {
+  const u = (state.username || '').toLowerCase();
+  const wn = String(e.white || '').toLowerCase();
+  const bn = String(e.black || '').toLowerCase();
+  let mine = null;
+  if (u && wn === u) mine = 'w';
+  else if (u && bn === u) mine = 'b';
+  let res = 'draw';
+  let word = e.result && e.result !== '*' ? e.result : '\u2013';
+  if (mine && (e.result === '1-0' || e.result === '0-1')) {
+    const won = (e.result === '1-0') === (mine === 'w');
+    res = won ? 'won' : 'lost';
+    word = won ? 'Won' : 'Lost';
+  } else if (e.result === '1/2-1/2') {
+    word = 'Draw';
+  }
+  const src = e.src === 'chesscom' ? 'Chess.com' : (e.src === 'sample' ? 'Sample' : 'PGN');
+  const sub = [entryDate(e), src].filter(Boolean).join(' \u00B7 ');
+  return '<div class="gitem">' +
+    '<button class="game" data-lib="' + esc(e.id) + '">' +
+    '<span class="gcol ' + (mine || 'n') + '"></span>' +
+    '<span class="gmain"><b>' + esc(e.white || 'White') + ' vs ' + esc(e.black || 'Black') + '</b><small>' + esc(sub) + '</small></span>' +
+    '<span class="gres ' + res + '">' + esc(word) + '</span></button>' +
+    '<button class="icon-btn lib-del" data-lib-del="' + esc(e.id) + '" aria-label="Remove game">\u2715</button>' +
+    '</div>';
+}
+
+function renderGamesTab() {
+  const cc = $('#games-chesscom');
+  const lib = $('#lib-list');
+  if (!cc || !lib) return;
+  const hasList = state.listGames.length > 0 && !!state.listUser;
+  cc.hidden = !hasList;
+  if (hasList) {
+    $('#glist-title').textContent = 'Chess.com \u00B7 ' + state.listUser;
+    renderGameList(state.listGames, state.listUser);
+  } else {
+    $('#glist').innerHTML = '';
+  }
+  const hasLib = state.library.length > 0;
+  $('#games-saved').hidden = !hasLib;
+  lib.innerHTML = state.library.map(libItemHtml).join('');
+  $('#games-empty').hidden = hasList || hasLib;
+}
+
+function hasGames() {
+  return state.library.length > 0 || state.listGames.length > 0;
+}
+
+/* ---------- sheets: import/games + settings ---------- */
 function openSheet(tab) {
+  $('#report').hidden = true;
+  $('#settings').hidden = true;
   $('#sheet').hidden = false;
   $('#in-user').value = state.username || '';
   renderUserChips();
-  switchTab(tab || 'user');
+  renderGamesTab();
+  switchTab(tab || (hasGames() ? 'games' : 'import'));
   document.body.style.overflow = 'hidden';
   const key = (state.username || '').toLowerCase();
-  if (key && state.listUser !== key && state.listLoadingFor !== key) onLoadGames();
+  if (key && state.listUser !== key && state.listLoadingFor !== key) onLoadGames({ goto: false });
 }
 function openSettings() {
+  $('#sheet').hidden = true;
+  $('#report').hidden = true;
   $('#settings').hidden = false;
   $('#in-profile').value = '';
   setMsg('#profile-msg', '');
@@ -1688,7 +2126,11 @@ function openSettings() {
 function closeSheet() {
   $('#sheet').hidden = true;
   $('#settings').hidden = true;
+  $('#report').hidden = true;
   document.body.style.overflow = '';
+}
+function anySheetOpen() {
+  return !$('#sheet').hidden || !$('#settings').hidden || !$('#report').hidden;
 }
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t) => {
@@ -1696,27 +2138,32 @@ function switchTab(name) {
     t.classList.toggle('active', on);
     t.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  $('#tab-user').hidden = name !== 'user';
-  $('#tab-pgn').hidden = name !== 'pgn';
+  $('#tab-import').hidden = name !== 'import';
+  $('#tab-games').hidden = name !== 'games';
 }
 
 function setMsg(id, text, isErr) {
   const el = $(id);
+  if (!el) return;
   el.textContent = text || '';
   el.classList.toggle('err', !!isErr);
 }
+function setUserMsg(text, isErr) {
+  setMsg('#user-msg', text, isErr);
+  setMsg('#games-msg', text, isErr);
+}
 
-async function onLoadGames() {
+async function onLoadGames(opts) {
+  const goto = !!(opts && opts.goto);
   const input = $('#in-user');
   const username = input.value.trim().replace(/^@/, '');
-  if (!username) { setMsg('#user-msg', 'Enter your Chess.com username.', true); return; }
+  if (!username) { setUserMsg('Enter your Chess.com username.', true); return; }
   const key = username.toLowerCase();
   const req = ++state.listReq;
   state.listLoadingFor = key;
   const btn = $('#btn-load-games');
   btn.disabled = true;
-  setMsg('#user-msg', 'Loading games\u2026');
-  $('#glist').innerHTML = '';
+  setUserMsg('Loading games\u2026');
   try {
     const games = await fetchRecentGames(username);
     if (req !== state.listReq) return;
@@ -1724,14 +2171,16 @@ async function onLoadGames() {
     input.value = saved.name || username;
     state.listGames = games;
     state.listUser = key;
-    if (!games.length) { setMsg('#user-msg', 'No standard-chess games found for "' + username + '".', true); }
-    else {
-      setMsg('#user-msg', 'Tap a game to analyze it.');
-      renderGameList(games, username);
+    renderGamesTab();
+    if (!games.length) {
+      setUserMsg('No standard-chess games found for "' + username + '".', true);
+    } else {
+      setUserMsg('Tap a game to see its summary.');
+      if (goto) switchTab('games');
     }
   } catch (e) {
     if (req !== state.listReq) return;
-    setMsg('#user-msg', e.message === 'NOT_FOUND' ? 'User "' + username + '" was not found on Chess.com.' : e.message, true);
+    setUserMsg(e.message === 'NOT_FOUND' ? 'User "' + username + '" was not found on Chess.com.' : e.message, true);
   } finally {
     if (req === state.listReq) {
       btn.disabled = false;
@@ -1740,14 +2189,30 @@ async function onLoadGames() {
   }
 }
 
+function onRefreshGames() {
+  if (!state.username) { switchTab('import'); setUserMsg('Enter your Chess.com username.', true); return; }
+  $('#in-user').value = state.username;
+  onLoadGames({ goto: false });
+}
+
 function onPickGame(i) {
   const g = state.listGames[i];
   if (!g) return;
   const u = state.listUser || (state.username || '').toLowerCase();
   const myColor = (g.white.username || '').toLowerCase() === u ? 'w' : 'b';
   const r = loadGame(g.pgn, { myColor });
-  if (r.error) { setMsg('#user-msg', r.error, true); return; }
-  closeSheet();
+  if (r.error) { setUserMsg(r.error, true); return; }
+  addToLibrary(g.pgn, state.game, { ts: g.end_time ? g.end_time * 1000 : null, src: 'chesscom' });
+  openReport();
+}
+
+function onPickLib(id) {
+  const e = state.library.find((x) => x.id === id);
+  if (!e) return;
+  const r = loadGame(e.pgn, {});
+  if (r.error) { setUserMsg(r.error, true); return; }
+  addToLibrary(e.pgn, state.game, { src: e.src });
+  openReport();
 }
 
 function onLoadPgn() {
@@ -1755,7 +2220,8 @@ function onLoadPgn() {
   const r = loadGame(text, {});
   if (r.error) { setMsg('#pgn-msg', r.error, true); return; }
   setMsg('#pgn-msg', '');
-  closeSheet();
+  addToLibrary(text, state.game, { src: 'pgn' });
+  openReport();
 }
 
 function onLoadSample() {
@@ -1763,7 +2229,8 @@ function onLoadSample() {
   const r = loadGame(SAMPLE_PGN, { myColor: 'w' });
   if (r.error) { setMsg('#pgn-msg', r.error, true); return; }
   setMsg('#pgn-msg', '');
-  closeSheet();
+  addToLibrary(SAMPLE_PGN, state.game, { src: 'sample' });
+  openReport();
 }
 
 function onAddProfile() {
@@ -1785,7 +2252,8 @@ async function waitForChess() {
 }
 
 function wireEvents() {
-  $('#btn-import').addEventListener('click', () => openSheet('user'));
+  $('#btn-brand').addEventListener('click', () => openSheet());
+  $('#btn-import').addEventListener('click', () => openSheet('import'));
   $('#btn-settings').addEventListener('click', openSettings);
   $('#btn-flip').addEventListener('click', () => { state.flipped = !state.flipped; render(); });
   $('#btn-first').addEventListener('click', () => goTo(0));
@@ -1798,28 +2266,59 @@ function wireEvents() {
     if (b) goTo(parseInt(b.dataset.ply, 10));
   });
   $('#card').addEventListener('click', (e) => {
-    if (e.target.closest('[data-open-import]')) openSheet('user');
+    if (e.target.closest('[data-open-import]')) openSheet('import');
   });
 
-  /* import sheet */
+  /* advantage graph (board view) + summary shortcut */
+  bindGraph($('#graph'), (p) => goTo(p));
+  $('#btn-open-report').addEventListener('click', () => openReport(state.ply > 0 ? state.ply : null));
+
+  /* import / games sheet */
   $('#sheet').addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) closeSheet();
   });
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
-  $('#btn-load-games').addEventListener('click', onLoadGames);
-  $('#in-user').addEventListener('keydown', (e) => { if (e.key === 'Enter') onLoadGames(); });
+  $('#btn-load-games').addEventListener('click', () => onLoadGames({ goto: true }));
+  $('#in-user').addEventListener('keydown', (e) => { if (e.key === 'Enter') onLoadGames({ goto: true }); });
+  $('#btn-refresh-games').addEventListener('click', onRefreshGames);
   $('#user-chips').addEventListener('click', (e) => {
     const b = e.target.closest('[data-chip]');
     if (!b) return;
     setActiveProfile(b.dataset.chip);
-    onLoadGames();
+    onLoadGames({ goto: true });
   });
   $('#glist').addEventListener('click', (e) => {
     const b = e.target.closest('.game');
     if (b) onPickGame(parseInt(b.dataset.i, 10));
   });
+  $('#lib-list').addEventListener('click', (e) => {
+    const del = e.target.closest('[data-lib-del]');
+    if (del) { removeFromLibrary(del.dataset.libDel); return; }
+    const b = e.target.closest('[data-lib]');
+    if (b) onPickLib(b.dataset.lib);
+  });
+  $('#btn-clear-lib').addEventListener('click', () => {
+    if (!state.library.length) return;
+    let ok = true;
+    try { ok = window.confirm('Remove all saved games from this device?'); } catch (err) { ok = true; }
+    if (!ok) return;
+    state.library = [];
+    saveLibrary();
+    renderGamesTab();
+  });
   $('#btn-load-pgn').addEventListener('click', onLoadPgn);
   $('#btn-sample').addEventListener('click', onLoadSample);
+
+  /* summary (report) sheet */
+  $('#report').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) closeSheet();
+  });
+  bindGraph($('#report-graph'), (p) => selectRep(p));
+  $('#report-chips').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ply]');
+    if (b) selectRep(parseInt(b.dataset.ply, 10));
+  });
+  $('#btn-view-board').addEventListener('click', onViewBoard);
 
   /* settings sheet */
   $('#settings').addEventListener('click', (e) => {
@@ -1847,7 +2346,7 @@ function wireEvents() {
   $('#in-profile').addEventListener('keydown', (e) => { if (e.key === 'Enter') onAddProfile(); });
 
   document.addEventListener('keydown', (e) => {
-    if (!$('#sheet').hidden || !$('#settings').hidden) { if (e.key === 'Escape') closeSheet(); return; }
+    if (anySheetOpen()) { if (e.key === 'Escape') closeSheet(); return; }
     const tag = (document.activeElement && document.activeElement.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     if (e.key === 'ArrowLeft') goTo(state.ply - 1);
@@ -1887,6 +2386,7 @@ async function boot() {
   loadPrefs();
   applyPrefs();
   loadProfiles();
+  loadLibrary();
   wireEvents();
 
   if (!(await waitForChess())) {
@@ -1900,7 +2400,7 @@ async function boot() {
   cleanupLegacyStorage();
   if (!restored) {
     render();
-    openSheet('user');
+    openSheet(hasGames() ? 'games' : 'import');
   }
 
   setTimeout(() => { if (!restored) engine.init(); }, 1500);
