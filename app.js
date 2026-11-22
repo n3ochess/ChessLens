@@ -5,11 +5,32 @@
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const DEPTH = 11;
 const MOVETIME_MS = 220;
-const LS_USER = 'chesslens.username';
-const LS_PGN = 'chesslens.lastpgn';
-const LS_CACHE = 'chesslens.cache.v5';
-const CDN_CACHE = 'chesslens-cdn-v5';
+
+/* localStorage keys (v6) + legacy keys migrated/cleaned on boot */
+const LS_PROFILES = 'chesslens.profiles.v6';
+const LS_PREFS = 'chesslens.prefs.v6';
+const LS_PGN = 'chesslens.lastpgn.v6';
+const LS_CACHE = 'chesslens.cache.v6';
+const LEGACY_USER = 'chesslens.username';
+const LEGACY_PGN = 'chesslens.lastpgn';
+const LEGACY_CACHE = 'chesslens.cache.v5';
+const CDN_CACHE = 'chesslens-cdn-v6'; // must match sw.js
 const MAX_CACHED_GAMES = 10;
+const MAX_PROFILES = 20;
+const USER_RE = /^[A-Za-z0-9_-]{2,30}$/;
+
+const BOARD_THEMES = [
+  { id: 'green',    name: 'Green',    light: '#ebecd0', dark: '#739552' },
+  { id: 'wood',     name: 'Wood',     light: '#edd6b0', dark: '#b88762' },
+  { id: 'slate',    name: 'Slate',    light: '#c9d1da', dark: '#6b7a8f' },
+  { id: 'midnight', name: 'Midnight', light: '#8d99ab', dark: '#475569' }
+];
+const PIECE_STYLES = [
+  { id: 'classic', name: 'Classic' },
+  { id: 'bold',    name: 'Bold' },
+  { id: 'flat',    name: 'Flat' },
+  { id: 'gold',    name: 'Gold' }
+];
 
 const VAL = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const NAME = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
@@ -62,6 +83,7 @@ const pick = (arr, i) => arr[Math.abs(i) % arr.length];
 
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+function lsRemove(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
 
 function winPct(cp) {
   if (cp >= 9000) return 100;
@@ -114,8 +136,199 @@ const state = {
   engineError: false,
   moveEls: [],
   listGames: [],
-  username: ''
+  listUser: '',
+  listReq: 0,
+  listLoadingFor: '',
+  username: '',
+  profiles: [],
+  prefs: { board: 'green', pieces: 'classic' }
 };
+
+/* =====================================================================
+   Preferences (board theme + piece style)
+   ===================================================================== */
+function loadPrefs() {
+  try {
+    const o = JSON.parse(lsGet(LS_PREFS) || '{}');
+    if (o && BOARD_THEMES.some((t) => t.id === o.board)) state.prefs.board = o.board;
+    if (o && PIECE_STYLES.some((s) => s.id === o.pieces)) state.prefs.pieces = o.pieces;
+  } catch (e) { /* ignore */ }
+}
+function applyPrefs() {
+  const root = document.documentElement;
+  root.setAttribute('data-board', state.prefs.board);
+  root.setAttribute('data-pieces', state.prefs.pieces);
+}
+function setPref(key, val) {
+  state.prefs[key] = val;
+  lsSet(LS_PREFS, JSON.stringify(state.prefs));
+  applyPrefs();
+  renderAppearance();
+}
+
+/* =====================================================================
+   Profiles (saved Chess.com usernames)
+   ===================================================================== */
+function findProfile(name) {
+  const k = String(name || '').toLowerCase();
+  return state.profiles.find((n) => n.toLowerCase() === k) || null;
+}
+
+function saveProfiles() {
+  lsSet(LS_PROFILES, JSON.stringify({ list: state.profiles, active: state.username }));
+}
+
+function loadProfiles() {
+  let list = [];
+  let active = '';
+  const raw = lsGet(LS_PROFILES);
+  try {
+    if (raw) {
+      const o = JSON.parse(raw);
+      if (o && Array.isArray(o.list)) list = o.list.filter((x) => typeof x === 'string' && USER_RE.test(x));
+      if (o && typeof o.active === 'string') active = o.active;
+    } else {
+      const legacy = (lsGet(LEGACY_USER) || '').trim();
+      if (legacy && USER_RE.test(legacy)) { list = [legacy]; active = legacy; }
+    }
+  } catch (e) { list = []; active = ''; }
+  const seen = {};
+  list = list.filter((n) => {
+    const k = n.toLowerCase();
+    if (seen[k]) return false;
+    seen[k] = 1;
+    return true;
+  });
+  state.profiles = list;
+  const match = list.find((n) => n.toLowerCase() === active.toLowerCase());
+  state.username = match || list[0] || '';
+  if (!raw && list.length) saveProfiles();
+}
+
+function setActiveProfile(name) {
+  const next = name || '';
+  const changed = next.toLowerCase() !== (state.username || '').toLowerCase();
+  state.username = next;
+  saveProfiles();
+  if (changed) {
+    state.listReq++;
+    state.listGames = [];
+    state.listUser = '';
+    state.listLoadingFor = '';
+    $('#glist').innerHTML = '';
+    setMsg('#user-msg', '');
+    $('#btn-load-games').disabled = false;
+    refreshColor();
+  }
+  const inp = $('#in-user');
+  if (inp) inp.value = state.username;
+  renderProfileList();
+  renderUserChips();
+}
+
+function addProfile(raw) {
+  const name = String(raw || '').trim().replace(/^@/, '');
+  if (!USER_RE.test(name)) return { error: 'Usernames use 2\u201330 letters, numbers, "_" or "-".' };
+  const existing = findProfile(name);
+  if (existing) { setActiveProfile(existing); return { ok: true, name: existing, existed: true }; }
+  if (state.profiles.length >= MAX_PROFILES) return { error: 'You can save up to ' + MAX_PROFILES + ' profiles.' };
+  state.profiles.push(name);
+  setActiveProfile(name);
+  return { ok: true, name };
+}
+
+function removeProfile(name) {
+  const k = String(name || '').toLowerCase();
+  const wasActive = (state.username || '').toLowerCase() === k;
+  state.profiles = state.profiles.filter((n) => n.toLowerCase() !== k);
+  if (wasActive) {
+    setActiveProfile(state.profiles[0] || '');
+  } else {
+    saveProfiles();
+    renderProfileList();
+    renderUserChips();
+  }
+}
+
+/* Re-detect which side the active profile played in the open game */
+function refreshColor() {
+  if (!state.game) return;
+  const mc = detectMyColor(state.game.headers);
+  state.myColor = mc;
+  if (mc) {
+    state.flipped = mc === 'b';
+    render();
+  }
+}
+
+function renderProfileList() {
+  const el = $('#profile-list');
+  if (!el) return;
+  if (!state.profiles.length) {
+    el.innerHTML = '<p class="set-empty">No saved profiles yet. Add your Chess.com username below.</p>';
+    return;
+  }
+  const active = (state.username || '').toLowerCase();
+  el.innerHTML = state.profiles.map((n) => {
+    const on = n.toLowerCase() === active;
+    return '<div class="prof' + (on ? ' active' : '') + '">' +
+      '<button class="prof-main" data-profile="' + esc(n) + '" aria-pressed="' + on + '">' +
+      '<span class="prof-dot"></span><span class="prof-name">' + esc(n) + '</span>' +
+      (on ? '<small>Active</small>' : '') + '</button>' +
+      '<button class="icon-btn prof-del" data-remove-profile="' + esc(n) + '" aria-label="Remove ' + esc(n) + '">\u2715</button>' +
+      '</div>';
+  }).join('');
+}
+
+function renderUserChips() {
+  const el = $('#user-chips');
+  if (!el) return;
+  if (state.profiles.length < 2) { el.hidden = true; el.innerHTML = ''; return; }
+  const active = (state.username || '').toLowerCase();
+  el.hidden = false;
+  el.innerHTML = state.profiles.map((n) =>
+    '<button class="chip" data-chip="' + esc(n) + '" aria-pressed="' + (n.toLowerCase() === active) + '">' + esc(n) + '</button>'
+  ).join('');
+}
+
+/* =====================================================================
+   Appearance pickers + preview
+   ===================================================================== */
+function renderAppearance() {
+  const bt = $('#board-themes');
+  const ps = $('#piece-styles');
+  if (!bt || !ps) return;
+  bt.innerHTML = BOARD_THEMES.map((t) =>
+    '<button class="opt" data-board-id="' + t.id + '" aria-pressed="' + (state.prefs.board === t.id) + '">' +
+    '<span class="sw"><i style="background:' + t.light + '"></i><i style="background:' + t.dark + '"></i>' +
+    '<i style="background:' + t.dark + '"></i><i style="background:' + t.light + '"></i></span>' +
+    '<span>' + esc(t.name) + '</span></button>'
+  ).join('');
+  ps.innerHTML = PIECE_STYLES.map((s) =>
+    '<button class="opt" data-piece-id="' + s.id + '" aria-pressed="' + (state.prefs.pieces === s.id) + '">' +
+    '<span class="ptile" data-pieces="' + s.id + '">' +
+    '<span class="sq l"><span class="pc w">' + GLYPH.n + TEXT_VS + '</span></span>' +
+    '<span class="sq d"><span class="pc b">' + GLYPH.n + TEXT_VS + '</span></span></span>' +
+    '<span>' + esc(s.name) + '</span></button>'
+  ).join('');
+}
+
+function buildPreview() {
+  const el = $('#prev-board');
+  if (!el || el.dataset.built) return;
+  const rows = ['rnbqkbnr', 'pppppppp', 'PPPPPPPP', 'RNBQKBNR'];
+  let h = '';
+  rows.forEach((row, r) => {
+    for (let c = 0; c < 8; c++) {
+      const ch = row[c];
+      const color = ch === ch.toLowerCase() ? 'b' : 'w';
+      const light = (r + c) % 2 === 0;
+      h += '<div class="sq ' + (light ? 'l' : 'd') + '"><span class="pc ' + color + '">' + GLYPH[ch.toLowerCase()] + TEXT_VS + '</span></div>';
+    }
+  });
+  el.innerHTML = h;
+  el.dataset.built = '1';
+}
 
 function parsePgn(text) {
   const src = String(text || '').replace(/\r/g, '').trim();
@@ -161,7 +374,7 @@ function parsePgn(text) {
 }
 
 function detectMyColor(headers) {
-  const u = (state.username || lsGet(LS_USER) || '').trim().toLowerCase();
+  const u = (state.username || '').trim().toLowerCase();
   if (!u) return null;
   if ((headers.White || '').toLowerCase() === u) return 'w';
   if ((headers.Black || '').toLowerCase() === u) return 'b';
@@ -1170,15 +1383,28 @@ function renderGameList(games, username) {
   });
 }
 
+/* ---------- sheets: import + settings ---------- */
 function openSheet(tab) {
-  const sheet = $('#sheet');
-  sheet.hidden = false;
-  $('#in-user').value = state.username || lsGet(LS_USER) || '';
+  $('#sheet').hidden = false;
+  $('#in-user').value = state.username || '';
+  renderUserChips();
   switchTab(tab || 'user');
+  document.body.style.overflow = 'hidden';
+  const key = (state.username || '').toLowerCase();
+  if (key && state.listUser !== key && state.listLoadingFor !== key) onLoadGames();
+}
+function openSettings() {
+  $('#settings').hidden = false;
+  $('#in-profile').value = '';
+  setMsg('#profile-msg', '');
+  renderProfileList();
+  renderAppearance();
+  buildPreview();
   document.body.style.overflow = 'hidden';
 }
 function closeSheet() {
   $('#sheet').hidden = true;
+  $('#settings').hidden = true;
   document.body.style.overflow = '';
 }
 function switchTab(name) {
@@ -1201,31 +1427,41 @@ async function onLoadGames() {
   const input = $('#in-user');
   const username = input.value.trim().replace(/^@/, '');
   if (!username) { setMsg('#user-msg', 'Enter your Chess.com username.', true); return; }
-  state.username = username;
-  lsSet(LS_USER, username);
+  const key = username.toLowerCase();
+  const req = ++state.listReq;
+  state.listLoadingFor = key;
   const btn = $('#btn-load-games');
   btn.disabled = true;
   setMsg('#user-msg', 'Loading games\u2026');
   $('#glist').innerHTML = '';
   try {
     const games = await fetchRecentGames(username);
+    if (req !== state.listReq) return;
+    // A username that loads successfully becomes the active saved profile.
+    const saved = addProfile(username);
+    input.value = saved.name || username;
     state.listGames = games;
+    state.listUser = key;
     if (!games.length) { setMsg('#user-msg', 'No standard-chess games found for "' + username + '".', true); }
     else {
       setMsg('#user-msg', 'Tap a game to analyze it.');
       renderGameList(games, username);
     }
   } catch (e) {
+    if (req !== state.listReq) return;
     setMsg('#user-msg', e.message === 'NOT_FOUND' ? 'User "' + username + '" was not found on Chess.com.' : e.message, true);
   } finally {
-    btn.disabled = false;
+    if (req === state.listReq) {
+      btn.disabled = false;
+      state.listLoadingFor = '';
+    }
   }
 }
 
 function onPickGame(i) {
   const g = state.listGames[i];
   if (!g) return;
-  const u = state.username.toLowerCase();
+  const u = state.listUser || (state.username || '').toLowerCase();
   const myColor = (g.white.username || '').toLowerCase() === u ? 'w' : 'b';
   const r = loadGame(g.pgn, { myColor });
   if (r.error) { setMsg('#user-msg', r.error, true); return; }
@@ -1248,6 +1484,16 @@ function onLoadSample() {
   closeSheet();
 }
 
+function onAddProfile() {
+  const inp = $('#in-profile');
+  const r = addProfile(inp.value);
+  if (r.error) { setMsg('#profile-msg', r.error, true); return; }
+  inp.value = '';
+  setMsg('#profile-msg', r.existed
+    ? '"' + r.name + '" was already saved \u2014 now active.'
+    : 'Saved "' + r.name + '" and set it as active.');
+}
+
 async function waitForChess() {
   for (let i = 0; i < 120; i++) {
     if (typeof Chess === 'function') return true;
@@ -1258,6 +1504,7 @@ async function waitForChess() {
 
 function wireEvents() {
   $('#btn-import').addEventListener('click', () => openSheet('user'));
+  $('#btn-settings').addEventListener('click', openSettings);
   $('#btn-flip').addEventListener('click', () => { state.flipped = !state.flipped; render(); });
   $('#btn-first').addEventListener('click', () => goTo(0));
   $('#btn-prev').addEventListener('click', () => goTo(state.ply - 1));
@@ -1272,12 +1519,19 @@ function wireEvents() {
     if (e.target.closest('[data-open-import]')) openSheet('user');
   });
 
+  /* import sheet */
   $('#sheet').addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) closeSheet();
   });
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
   $('#btn-load-games').addEventListener('click', onLoadGames);
   $('#in-user').addEventListener('keydown', (e) => { if (e.key === 'Enter') onLoadGames(); });
+  $('#user-chips').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-chip]');
+    if (!b) return;
+    setActiveProfile(b.dataset.chip);
+    onLoadGames();
+  });
   $('#glist').addEventListener('click', (e) => {
     const b = e.target.closest('.game');
     if (b) onPickGame(parseInt(b.dataset.i, 10));
@@ -1285,8 +1539,33 @@ function wireEvents() {
   $('#btn-load-pgn').addEventListener('click', onLoadPgn);
   $('#btn-sample').addEventListener('click', onLoadSample);
 
+  /* settings sheet */
+  $('#settings').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { closeSheet(); return; }
+    const del = e.target.closest('[data-remove-profile]');
+    if (del) {
+      const n = del.dataset.removeProfile;
+      removeProfile(n);
+      setMsg('#profile-msg', 'Removed "' + n + '".');
+      return;
+    }
+    const pr = e.target.closest('[data-profile]');
+    if (pr) {
+      const n = pr.dataset.profile;
+      setActiveProfile(n);
+      setMsg('#profile-msg', 'Active profile: ' + n + '.');
+      return;
+    }
+    const bt = e.target.closest('[data-board-id]');
+    if (bt) { setPref('board', bt.dataset.boardId); return; }
+    const pc = e.target.closest('[data-piece-id]');
+    if (pc) { setPref('pieces', pc.dataset.pieceId); }
+  });
+  $('#btn-add-profile').addEventListener('click', onAddProfile);
+  $('#in-profile').addEventListener('keydown', (e) => { if (e.key === 'Enter') onAddProfile(); });
+
   document.addEventListener('keydown', (e) => {
-    if (!$('#sheet').hidden) { if (e.key === 'Escape') closeSheet(); return; }
+    if (!$('#sheet').hidden || !$('#settings').hidden) { if (e.key === 'Escape') closeSheet(); return; }
     const tag = (document.activeElement && document.activeElement.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     if (e.key === 'ArrowLeft') goTo(state.ply - 1);
@@ -1322,17 +1601,22 @@ function wireEvents() {
 }
 
 async function boot() {
+  lsRemove(LEGACY_CACHE); // old v5 analysis cache is regenerable
+  loadPrefs();
+  applyPrefs();
+  loadProfiles();
   wireEvents();
-  state.username = lsGet(LS_USER) || '';
 
   if (!(await waitForChess())) {
     $('#card').innerHTML = '<div class="empty"><h2>Couldn\u2019t load chess.js</h2><p>The chess library is downloaded once and then cached. Connect to the internet and reload the app.</p></div>';
     return;
   }
 
-  const saved = lsGet(LS_PGN);
+  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN);
   let restored = false;
   if (saved) restored = !!loadGame(saved, {}).ok;
+  lsRemove(LEGACY_PGN);
+  lsRemove(LEGACY_USER);
   if (!restored) {
     render();
     openSheet('user');
