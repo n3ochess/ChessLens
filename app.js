@@ -3,14 +3,21 @@
 'use strict';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const STD_PLACEMENT = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
 const DEPTH = 11;
 const MOVETIME_MS = 220;
+/* Max number of plies (half-moves) that can be labelled "Book". Tweak freely (e.g. 8–16). */
+const BOOK_MAX_PLIES = 12;
 
-/* localStorage keys (v7) + legacy keys migrated/cleaned on boot */
-const LS_PROFILES = 'chesslens.profiles.v7';
-const LS_PREFS = 'chesslens.prefs.v7';
-const LS_PGN = 'chesslens.lastpgn.v7';
-const LS_CACHE = 'chesslens.cache.v7';
+/* localStorage keys (v8) + legacy keys migrated/cleaned on boot */
+const LS_PROFILES = 'chesslens.profiles.v8';
+const LS_PREFS = 'chesslens.prefs.v8';
+const LS_PGN = 'chesslens.lastpgn.v8';
+const LS_CACHE = 'chesslens.cache.v8';
+const LEGACY_PROFILES_V7 = 'chesslens.profiles.v7';
+const LEGACY_PREFS_V7 = 'chesslens.prefs.v7';
+const LEGACY_PGN_V7 = 'chesslens.lastpgn.v7';
+const LEGACY_CACHE_V7 = 'chesslens.cache.v7';
 const LEGACY_PROFILES = 'chesslens.profiles.v6';
 const LEGACY_PREFS = 'chesslens.prefs.v6';
 const LEGACY_USER = 'chesslens.username';
@@ -18,7 +25,7 @@ const LEGACY_PGN_V6 = 'chesslens.lastpgn.v6';
 const LEGACY_PGN = 'chesslens.lastpgn';
 const LEGACY_CACHE_V6 = 'chesslens.cache.v6';
 const LEGACY_CACHE = 'chesslens.cache.v5';
-const CDN_CACHE = 'chesslens-cdn-v7'; // must match sw.js
+const CDN_CACHE = 'chesslens-cdn-v8'; // must match sw.js
 const MAX_CACHED_GAMES = 10;
 const MAX_PROFILES = 20;
 const USER_RE = /^[A-Za-z0-9_-]{2,30}$/;
@@ -58,6 +65,7 @@ const GLYPH = { k: '\u265A', q: '\u265B', r: '\u265C', b: '\u265D', n: '\u265E',
 const TEXT_VS = '\uFE0E';
 
 const CLS = {
+  book:       { label: 'Book',       sym: 'B',  color: '#a0784f', fg: '#fff' },
   brilliant:  { label: 'Brilliant',  sym: '!!', color: '#26c2a3', fg: '#fff' },
   great:      { label: 'Great',      sym: '!',  color: '#5c8bb0', fg: '#fff' },
   best:       { label: 'Best',       sym: '\u2605', color: '#81b64c', fg: '#fff' },
@@ -66,7 +74,7 @@ const CLS = {
   mistake:    { label: 'Mistake',    sym: '?',  color: '#e58f2a', fg: '#fff' },
   blunder:    { label: 'Blunder',    sym: '??', color: '#ca3431', fg: '#fff' }
 };
-const CLS_ORDER = ['brilliant', 'great', 'best', 'good', 'inaccuracy', 'mistake', 'blunder'];
+const CLS_ORDER = ['book', 'brilliant', 'great', 'best', 'good', 'inaccuracy', 'mistake', 'blunder'];
 
 const ENGINE_SOURCES = [
   { name: 'Stockfish WASM (cdnjs)',
@@ -93,6 +101,188 @@ const SAMPLE_PGN = [
   '8. Nc3 c6 9. Bg5 b5 10. Nxb5 cxb5 11. Bxb5+ Nbd7 12. O-O-O Rd8 13. Rxd7 Rxd7',
   '14. Rd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+ Nxb8 17. Rd8# 1-0'
 ].join('\n');
+
+/* =====================================================================
+   Local opening book (name, SAN moves from the start position).
+   Order matters: general names first, specific names later (later wins
+   when two lines end on the same position). Every position along a line
+   counts as theory; transpositions are matched by position, not by order.
+   ===================================================================== */
+const OPENING_LINES = [
+  /* First moves */
+  ['King\u2019s Pawn Game', 'e4'],
+  ['Queen\u2019s Pawn Game', 'd4'],
+  ['English Opening', 'c4'],
+  ['R\u00E9ti Opening', 'Nf3'],
+  ['Bird\u2019s Opening', 'f4'],
+  ['Nimzowitsch-Larsen Attack', 'b3'],
+  ['Indian Defense', 'd4 Nf6'],
+  ['Queen\u2019s Pawn Game', 'd4 d5'],
+
+  /* 1.e4 e5 */
+  ['King\u2019s Pawn Game', 'e4 e5'],
+  ['King\u2019s Knight Opening', 'e4 e5 Nf3'],
+  ['Ruy Lopez', 'e4 e5 Nf3 Nc6 Bb5'],
+  ['Ruy Lopez: Morphy Defense', 'e4 e5 Nf3 Nc6 Bb5 a6'],
+  ['Ruy Lopez: Closed', 'e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3'],
+  ['Ruy Lopez: Exchange Variation', 'e4 e5 Nf3 Nc6 Bb5 a6 Bxc6 dxc6 O-O f6 d4 exd4 Nxd4 c5'],
+  ['Ruy Lopez: Berlin Defense', 'e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Nxe4 d4 Nd6 Bxc6 dxc6 dxe5 Nf5 Qxd8+ Kxd8'],
+  ['Italian Game', 'e4 e5 Nf3 Nc6 Bc4'],
+  ['Italian Game: Giuoco Piano', 'e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6 O-O O-O'],
+  ['Italian Game: Giuoco Pianissimo', 'e4 e5 Nf3 Nc6 Bc4 Bc5 d3 Nf6 c3 d6 O-O a6 Re1 Ba7 Bb3 O-O'],
+  ['Italian Game: Evans Gambit', 'e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5 d4 exd4 O-O Nge7'],
+  ['Italian Game: Two Knights Defense', 'e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5 Bb5+ c6 dxc6 bxc6 Be2'],
+  ['Scotch Game', 'e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Nf6 Nxc6 bxc6 e5 Qe7 Qe2 Nd5 c4 Ba6'],
+  ['Three Knights Game', 'e4 e5 Nf3 Nc6 Nc3'],
+  ['Four Knights Game', 'e4 e5 Nf3 Nc6 Nc3 Nf6'],
+  ['Four Knights Game: Spanish Variation', 'e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bb4 O-O O-O d3 d6 Bg5 Bxc3 bxc3 Qe7'],
+  ['Four Knights Game: Scotch Variation', 'e4 e5 Nf3 Nc6 Nc3 Nf6 d4 exd4 Nxd4 Bb4 Nxc6 bxc6 Bd3 d5 exd5 cxd5'],
+  ['Petrov\u2019s Defense', 'e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 d4 d5 Bd3 Nc6 O-O Be7'],
+  ['Philidor Defense', 'e4 e5 Nf3 d6 d4 Nf6 Nc3 Nbd7 Bc4 Be7 O-O O-O'],
+  ['Latvian Gambit', 'e4 e5 Nf3 f5 Nxe5 Qf6 d4 d6 Nc4 fxe4 Nc3 Qg6'],
+  ['Ponziani Opening', 'e4 e5 Nf3 Nc6 c3 Nf6 d4 Nxe4 d5 Ne7 Nxe5 Ng6'],
+  ['Vienna Game', 'e4 e5 Nc3'],
+  ['Vienna Game: Falkbeer Variation', 'e4 e5 Nc3 Nf6 f4 d5 fxe5 Nxe4 Nf3 Be7'],
+  ['King\u2019s Gambit', 'e4 e5 f4'],
+  ['King\u2019s Gambit Accepted', 'e4 e5 f4 exf4 Nf3 g5 h4 g4 Ne5'],
+  ['King\u2019s Gambit Declined', 'e4 e5 f4 Bc5 Nf3 d6 c3 Nf6'],
+  ['Bishop\u2019s Opening', 'e4 e5 Bc4 Nf6 d3 c6 Nf3 d5 Bb3 Bd6'],
+  ['Danish Gambit', 'e4 e5 d4 exd4 c3 dxc3 Bc4 cxb2 Bxb2 d5 Bxd5 Nf6'],
+  ['Center Game', 'e4 e5 d4 exd4 Qxd4 Nc6 Qe3 Nf6 Nc3 Bb4 Bd2 O-O'],
+
+  /* Sicilian */
+  ['Sicilian Defense', 'e4 c5'],
+  ['Sicilian Defense: Najdorf Variation', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6 f3 Be7 Qd2'],
+  ['Sicilian Defense: Dragon Variation', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2 Nc6'],
+  ['Sicilian Defense: Scheveningen Variation', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6 Be2 a6 O-O Qc7 f4 Nc6'],
+  ['Sicilian Defense: Classical Variation', 'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bg5 e6 Qd2 a6 O-O-O Bd7'],
+  ['Sicilian Defense: Sveshnikov Variation', 'e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 e5 Ndb5 d6 Bg5 a6 Na3 b5'],
+  ['Sicilian Defense: Taimanov Variation', 'e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6 Nc3 Qc7 Be3 a6 Qd2 Nf6 O-O-O'],
+  ['Sicilian Defense: Kan Variation', 'e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6 Bd3 Bc5 Nb3 Ba7 Qe2 Nc6 Nc3 Nge7'],
+  ['Sicilian Defense: Alapin Variation', 'e4 c5 c3 Nf6 e5 Nd5 d4 cxd4 Nf3 e6 cxd4 d6 Bc4 Nb6'],
+  ['Sicilian Defense: Closed', 'e4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 d3 d6 Be3 e6'],
+  ['Sicilian Defense: Grand Prix Attack', 'e4 c5 Nc3 Nc6 f4 g6 Nf3 Bg7 Bc4 e6 f5'],
+  ['Sicilian Defense: Smith-Morra Gambit', 'e4 c5 d4 cxd4 c3 dxc3 Nxc3 Nc6 Nf3 d6 Bc4 e6 O-O Nf6'],
+
+  /* French */
+  ['French Defense', 'e4 e6'],
+  ['French Defense: Advance Variation', 'e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3 Qb6 a3 c4 Nbd2 Na5'],
+  ['French Defense: Winawer Variation', 'e4 e6 d4 d5 Nc3 Bb4 e5 c5 a3 Bxc3+ bxc3 Ne7 Qg4 Qc7 Qxg7 Rg8 Qxh7 cxd4 Ne2 Nbc6 f4 Bd7'],
+  ['French Defense: Classical Variation', 'e4 e6 d4 d5 Nc3 Nf6 Bg5 Be7 e5 Nfd7 Bxe7 Qxe7 f4 O-O Nf3 c5'],
+  ['French Defense: Tarrasch Variation', 'e4 e6 d4 d5 Nd2 Nf6 e5 Nfd7 Bd3 c5 c3 Nc6 Ne2 cxd4 cxd4 f6'],
+  ['French Defense: Exchange Variation', 'e4 e6 d4 d5 exd5 exd5 Nf3 Nf6 Bd3 Bd6 O-O O-O'],
+
+  /* Caro-Kann */
+  ['Caro-Kann Defense', 'e4 c6'],
+  ['Caro-Kann Defense: Advance Variation', 'e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2 c5 Be3 Nc6 O-O Qb6'],
+  ['Caro-Kann Defense: Classical Variation', 'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7 h5 Bh7 Bd3 Bxd3 Qxd3 e6 Bf4 Qa5+'],
+  ['Caro-Kann Defense: Exchange Variation', 'e4 c6 d4 d5 exd5 cxd5 Bd3 Nc6 c3 Nf6 Bf4 Bg4 Qb3 Qd7'],
+  ['Caro-Kann Defense: Panov Attack', 'e4 c6 d4 d5 exd5 cxd5 c4 Nf6 Nc3 e6 Nf3 Be7 cxd5 Nxd5 Bd3 Nc6'],
+
+  /* Other 1.e4 defenses */
+  ['Scandinavian Defense', 'e4 d5 exd5 Qxd5 Nc3 Qa5 d4 Nf6 Nf3 c6 Bc4 Bf5 Bd2 e6'],
+  ['Scandinavian Defense: Modern Variation', 'e4 d5 exd5 Nf6 d4 Nxd5 Nf3 g6 Be2 Bg7 O-O O-O'],
+  ['Pirc Defense', 'e4 d6 d4 Nf6 Nc3 g6 Nf3 Bg7 Be2 O-O O-O c6'],
+  ['Pirc Defense: Austrian Attack', 'e4 d6 d4 Nf6 Nc3 g6 f4 Bg7 Nf3 c5 dxc5 Qa5 Bd3 Qxc5 Qe2 O-O Be3 Qa5 O-O Nc6'],
+  ['Modern Defense', 'e4 g6 d4 Bg7 Nc3 d6 Nf3 a6'],
+  ['Alekhine\u2019s Defense', 'e4 Nf6 e5 Nd5 d4 d6 Nf3 Bg4 Be2 e6 O-O Be7 c4 Nb6'],
+
+  /* 1.d4 d5 */
+  ['Queen\u2019s Gambit', 'd4 d5 c4'],
+  ['Queen\u2019s Gambit Accepted', 'd4 d5 c4 dxc4 Nf3 Nf6 e3 e6 Bxc4 c5 O-O a6 Qe2 b5 Bb3 Bb7'],
+  ['Queen\u2019s Gambit Declined', 'd4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 Nbd7 Rc1 c6 Bd3 dxc4 Bxc4 Nd5'],
+  ['Queen\u2019s Gambit Declined: Exchange Variation', 'd4 d5 c4 e6 Nc3 Nf6 cxd5 exd5 Bg5 c6 e3 Be7 Bd3 Nbd7 Qc2 O-O Nge2 Re8'],
+  ['Queen\u2019s Gambit Declined: Tarrasch Defense', 'd4 d5 c4 e6 Nc3 c5 cxd5 exd5 Nf3 Nc6 g3 Nf6 Bg2 Be7 O-O O-O'],
+  ['Albin Countergambit', 'd4 d5 c4 e5 dxe5 d4 Nf3 Nc6 g3 Be6'],
+  ['Slav Defense', 'd4 d5 c4 c6 Nf3 Nf6 Nc3 dxc4 a4 Bf5 e3 e6 Bxc4 Bb4 O-O Nbd7'],
+  ['Semi-Slav Defense', 'd4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e3 Nbd7 Bd3 dxc4 Bxc4 b5 Bd3 a6 e4 c5'],
+  ['London System', 'd4 d5 Bf4 Nf6 e3 c5 c3 Nc6 Nd2 e6 Ngf3 Bd6 Bg3 O-O'],
+  ['London System', 'd4 Nf6 Nf3 d5 Bf4 e6 e3 c5 c3 Nc6 Nbd2 Bd6 Bg3 O-O'],
+  ['Colle System', 'd4 d5 Nf3 Nf6 e3 e6 Bd3 c5 c3 Nc6 Nbd2 Bd6 O-O O-O'],
+  ['Blackmar-Diemer Gambit', 'd4 d5 e4 dxe4 Nc3 Nf6 f3 exf3 Nxf3 e6 Bd3 Bb4'],
+
+  /* 1.d4 Nf6 */
+  ['Nimzo-Indian Defense', 'd4 Nf6 c4 e6 Nc3 Bb4 e3 O-O Bd3 d5 Nf3 c5 O-O Nc6 a3 Bxc3 bxc3 dxc4 Bxc4 Qc7'],
+  ['Nimzo-Indian Defense: Classical Variation', 'd4 Nf6 c4 e6 Nc3 Bb4 Qc2 O-O a3 Bxc3+ Qxc3 b6 Bg5 Bb7 e3 d6 f3 Nbd7'],
+  ['Queen\u2019s Indian Defense', 'd4 Nf6 c4 e6 Nf3 b6 g3 Ba6 b3 Bb4+ Bd2 Be7 Bg2 c6 Bc3 d5 Ne5 Nfd7'],
+  ['Catalan Opening', 'd4 Nf6 c4 e6 g3 d5 Bg2 Be7 Nf3 O-O O-O dxc4 Qc2 a6 Qxc4 b5 Qc2 Bb7'],
+  ['Bogo-Indian Defense', 'd4 Nf6 c4 e6 Nf3 Bb4+ Bd2 Qe7 g3 Nc6 Nc3 Bxc3 Bxc3 Ne4 Rc1 O-O'],
+  ['King\u2019s Indian Defense', 'd4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 O-O Nc6 d5 Ne7'],
+  ['King\u2019s Indian Defense: Samisch Variation', 'd4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f3 O-O Be3 e5 d5 Nh5'],
+  ['King\u2019s Indian Defense: Four Pawns Attack', 'd4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f4 O-O Nf3 c5 d5 e6'],
+  ['Gr\u00FCnfeld Defense', 'd4 Nf6 c4 g6 Nc3 d5 cxd5 Nxd5 e4 Nxc3 bxc3 Bg7 Nf3 c5 Be3 Qa5 Qd2 Nc6 Rc1 O-O'],
+  ['Gr\u00FCnfeld Defense: Russian Variation', 'd4 Nf6 c4 g6 Nc3 d5 Nf3 Bg7 Qb3 dxc4 Qxc4 O-O e4 Bg4 Be3 Nfd7'],
+  ['Benoni Defense', 'd4 Nf6 c4 c5 d5 e6 Nc3 exd5 cxd5 d6 e4 g6 Nf3 Bg7 Be2 O-O O-O'],
+  ['Benko Gambit', 'd4 Nf6 c4 c5 d5 b5 cxb5 a6 bxa6 Bxa6 Nc3 d6 e4 Bxf1 Kxf1 g6'],
+  ['Budapest Gambit', 'd4 Nf6 c4 e5 dxe5 Ng4 Bf4 Nc6 Nf3 Bb4+ Nbd2 Qe7 a3 Ngxe5 axb4 Nxf3+ Nxf3 Qxb4+'],
+  ['Old Indian Defense', 'd4 Nf6 c4 d6 Nc3 Nbd7 e4 e5 Nf3 Be7 Be2 O-O O-O c6'],
+  ['Trompowsky Attack', 'd4 Nf6 Bg5 Ne4 Bf4 c5 f3 Qa5+ c3 Nf6 d5 Qb6'],
+  ['Torre Attack', 'd4 Nf6 Nf3 e6 Bg5 c5 e3 h6 Bh4 cxd4 exd4 Qb6'],
+
+  /* Dutch */
+  ['Dutch Defense', 'd4 f5 g3 Nf6 Bg2 e6 Nf3 Be7 O-O O-O c4 d6'],
+  ['Dutch Defense: Stonewall Variation', 'd4 f5 c4 Nf6 g3 e6 Bg2 Be7 Nf3 O-O O-O d5 b3 c6'],
+
+  /* Flank openings */
+  ['R\u00E9ti Opening', 'Nf3 d5 c4 e6 g3 Nf6 Bg2 Be7 O-O O-O b3 c5'],
+  ['Zukertort Opening', 'Nf3 d5 g3 Nf6 Bg2 e6 O-O Be7 d3 O-O Nbd2 c5'],
+  ['English Opening: Symmetrical Variation', 'c4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 Nf3 e6 O-O Nge7 d3 O-O'],
+  ['English Opening: Reversed Sicilian', 'c4 e5 Nc3 Nf6 Nf3 Nc6 g3 d5 cxd5 Nxd5 Bg2 Nb6 O-O Be7'],
+  ['Bird\u2019s Opening', 'f4 d5 Nf3 Nf6 e3 g6 Be2 Bg7 O-O O-O d3 c5'],
+  ['Nimzowitsch-Larsen Attack', 'b3 e5 Bb2 Nc6 e3 d5 Bb5 Bd6 Bxc6+ bxc6 Ne2 Ne7']
+];
+
+/* ---------- opening book engine ---------- */
+let BOOK = null;
+
+function posKey(fen) {
+  return fen.split(' ').slice(0, 3).join(' ');
+}
+
+function ensureBook() {
+  if (BOOK) return BOOK;
+  const keys = new Set();
+  const names = new Map();
+  OPENING_LINES.forEach((line) => {
+    const name = line[0];
+    const toks = line[1].split(/\s+/).filter(Boolean);
+    const ch = new Chess();
+    keys.add(posKey(ch.fen()));
+    let ok = true;
+    for (let i = 0; i < toks.length; i++) {
+      let m = null;
+      try { m = ch.move(toks[i], { sloppy: true }); } catch (e) { m = null; }
+      if (!m) { ok = false; console.warn('[ChessLens] book line skipped at', name, toks[i]); break; }
+      keys.add(posKey(ch.fen()));
+    }
+    if (ok) names.set(posKey(ch.fen()), name);
+  });
+  BOOK = { keys, names };
+  return BOOK;
+}
+
+/* Returns { count, names[k], opening } where moves 0..count-1 are theory. */
+function computeBook(fens, nMoves) {
+  const out = { count: 0, names: [], opening: null };
+  try {
+    if (!fens || !fens.length || fens[0].split(' ')[0] !== STD_PLACEMENT || fens[0].split(' ')[1] !== 'w') return out;
+    const bk = ensureBook();
+    let cur = null;
+    const lim = Math.min(nMoves, BOOK_MAX_PLIES);
+    for (let k = 0; k < lim; k++) {
+      const key = posKey(fens[k + 1]);
+      if (!bk.keys.has(key)) break;
+      if (bk.names.has(key)) cur = bk.names.get(key);
+      out.names[k] = cur;
+      out.count = k + 1;
+    }
+    out.opening = out.count ? cur : null;
+  } catch (e) {
+    console.warn('[ChessLens] book detection failed', e);
+    return { count: 0, names: [], opening: null };
+  }
+  return out;
+}
 
 const $ = (sel, root) => (root || document).querySelector(sel);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -176,15 +366,16 @@ function pieceHtml(type, color, styleOverride) {
 }
 
 /* =====================================================================
-   Preferences (board theme + piece style)
+   Preferences (board theme + piece style) — Neo is the default
    ===================================================================== */
 function loadPrefs() {
   try {
-    const raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS);
+    const raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS_V7) || lsGet(LEGACY_PREFS);
     const o = JSON.parse(raw || '{}');
     if (o && BOARD_THEMES.some((t) => t.id === o.board)) state.prefs.board = o.board;
     if (o && PIECE_STYLES.some((s) => s.id === o.pieces)) state.prefs.pieces = o.pieces;
   } catch (e) { /* ignore */ }
+  if (lsGet(LS_PREFS) === null) lsSet(LS_PREFS, JSON.stringify(state.prefs));
 }
 function applyPrefs() {
   const root = document.documentElement;
@@ -215,7 +406,7 @@ function saveProfiles() {
 function loadProfiles() {
   let list = [];
   let active = '';
-  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES);
+  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES_V7) || lsGet(LEGACY_PROFILES);
   try {
     if (raw) {
       const o = JSON.parse(raw);
@@ -236,7 +427,7 @@ function loadProfiles() {
   state.profiles = list;
   const match = list.find((n) => n.toLowerCase() === active.toLowerCase());
   state.username = match || list[0] || '';
-  if (!lsGet(LS_PROFILES) && list.length) saveProfiles();
+  if (lsGet(LS_PROFILES) === null) saveProfiles();
 }
 
 function setActiveProfile(name) {
@@ -405,7 +596,8 @@ function parsePgn(text) {
     fens.push(ch.fen());
   }
   if (!moves.length) throw new Error('No moves found in that PGN.');
-  return { headers, startFen, moves, fens, key: hashStr(fens.join('|')) };
+  const book = computeBook(fens, moves.length);
+  return { headers, startFen, moves, fens, book, key: hashStr(fens.join('|')) };
 }
 
 function detectMyColor(headers) {
@@ -436,6 +628,28 @@ function saveCache(key, analysis) {
     while (obj.order.length > MAX_CACHED_GAMES) delete obj.data[obj.order.shift()];
     lsSet(LS_CACHE, JSON.stringify(obj));
   } catch (e) { /* ignore */ }
+}
+
+/* One-time, safe migration of v7 data to v8 keys, then cleanup of old keys */
+function migrateStorage() {
+  /* analysis cache: same format, so reuse it instead of re-analyzing */
+  try {
+    if (lsGet(LS_CACHE) === null) {
+      const old = lsGet(LEGACY_CACHE_V7);
+      if (old) {
+        const o = JSON.parse(old);
+        if (o && o.data && typeof o.data === 'object') lsSet(LS_CACHE, old);
+      }
+    }
+  } catch (e) { /* ignore */ }
+  lsRemove(LEGACY_CACHE_V7);
+  lsRemove(LEGACY_CACHE_V6);
+  lsRemove(LEGACY_CACHE);
+}
+function cleanupLegacyStorage() {
+  if (lsGet(LS_PREFS) !== null) { lsRemove(LEGACY_PREFS_V7); lsRemove(LEGACY_PREFS); }
+  if (lsGet(LS_PROFILES) !== null) { lsRemove(LEGACY_PROFILES_V7); lsRemove(LEGACY_PROFILES); lsRemove(LEGACY_USER); }
+  if (lsGet(LS_PGN) !== null) { lsRemove(LEGACY_PGN_V7); lsRemove(LEGACY_PGN_V6); lsRemove(LEGACY_PGN); }
 }
 
 async function getAsset(url) {
@@ -656,6 +870,25 @@ function computeMoveResult(k) {
   const winAfter = winPct(B.cp * sgn);
   const uci = mv.from + mv.to + (mv.promotion || '');
   const isBest = !!A.best && uci === A.best;
+
+  let bestSan = null;
+  let bestMove = null;
+  if (A.best) {
+    const ch = new Chess();
+    ch.load(g.fens[k]);
+    const bm = ch.move(uciToMove(A.best));
+    if (bm) { bestSan = bm.san; bestMove = bm; }
+  }
+
+  /* Theory moves are never penalized by the shallow engine */
+  if (g.book && k < g.book.count) {
+    state.results[k] = {
+      cls: 'book', loss: 0, winBefore, winAfter, isBest, sac: false, onlyMove: false,
+      bestSan, bestMove, comment: null
+    };
+    return;
+  }
+
   const loss = isBest ? 0 : Math.max(0, winBefore - winAfter);
   const inaccCutoff = k < 6 ? 8 : 5;
 
@@ -686,14 +919,6 @@ function computeMoveResult(k) {
     }
   }
 
-  let bestSan = null;
-  let bestMove = null;
-  if (A.best) {
-    const ch = new Chess();
-    ch.load(g.fens[k]);
-    const bm = ch.move(uciToMove(A.best));
-    if (bm) { bestSan = bm.san; bestMove = bm; }
-  }
   state.results[k] = { cls, loss, winBefore, winAfter, isBest, sac, onlyMove, bestSan, bestMove, comment: null };
 }
 
@@ -845,6 +1070,19 @@ function generateCommentary(c) {
       'A stunning idea \u2014 the material given up is more than repaid by the attack.'
     ], S));
     out.push(c.winAfter >= 60 ? 'It keeps ' + who + ' firmly in control.' : 'It keeps the balance while creating real problems for ' + opp + '.');
+  } else if (cls === 'book') {
+    const op = c.opening;
+    out.push(op
+      ? pick([
+          'A book move \u2014 standard theory in the ' + op + '.',
+          'Known opening theory: this is a main-line move of the ' + op + '.',
+          'Right out of the opening book (' + op + ').'
+        ], S)
+      : pick([
+          'A book move \u2014 well-known opening theory.',
+          'A standard theoretical move.',
+          'Right out of the opening book.'
+        ], S));
   } else if (cls === 'great') {
     out.push(pick([
       'A great find! This is nearly the only move that holds things together.',
@@ -869,7 +1107,7 @@ function generateCommentary(c) {
       inaccuracy: ['A small slip \u2014 it gives back part of the advantage.', 'An inaccuracy: playable, but there was something better.'],
       mistake: ['This is a mistake that noticeably shifts the evaluation.', 'A mistake \u2014 the position gets harder to hold.'],
       blunder: ['A blunder \u2014 this throws away a large part of the position.', 'That\u2019s a serious blunder that swings the game.']
-    }[cls];
+    }[cls] || ['A questionable move.'];
     out.push(pick(head, S));
 
     let reason = null;
@@ -937,6 +1175,7 @@ function buildContext(k) {
     bestSan: R.bestSan,
     bestMove: R.bestMove,
     bestUci: state.analysis[k].best,
+    opening: g.book && k < g.book.count ? (g.book.names[k] || null) : null,
     evalBefore: state.analysis[k],
     evalAfter: state.analysis[k + 1],
     fenBefore: g.fens[k],
@@ -953,7 +1192,7 @@ function commentFor(k) {
   if (!R) return null;
   if (!R.comment) {
     try { R.comment = generateCommentary(buildContext(k)); }
-    catch (e) { console.warn(e); R.comment = state.game.moves[k].san + ' \u2014 ' + CLS[R.cls].label + '.'; }
+    catch (e) { console.warn(e); R.comment = state.game.moves[k].san + ' \u2014 ' + (CLS[R.cls] || CLS.good).label + '.'; }
   }
   return R.comment;
 }
@@ -1095,7 +1334,7 @@ function renderOverlay() {
     }
     if (state.ply > 0) {
       const r = state.results[state.ply - 1];
-      if (r) {
+      if (r && CLS[r.cls]) {
         const mv = g.moves[state.ply - 1];
         const p = sqXY(mv.to);
         const cl = CLS[r.cls];
@@ -1163,7 +1402,8 @@ function summaryHtml() {
       const r = state.results[k];
       if (!r) return;
       counts[r.cls] = (counts[r.cls] || 0) + 1;
-      accSum += clamp(103.1668 * Math.exp(-0.04354 * r.loss) - 3.1669, 0, 100);
+      const loss = Number.isFinite(r.loss) ? r.loss : 0;
+      accSum += clamp(103.1668 * Math.exp(-0.04354 * loss) - 3.1669, 0, 100);
       n++;
     });
     const chips = CLS_ORDER.filter((k) => counts[k]).map((k) =>
@@ -1195,6 +1435,11 @@ function renderCard() {
       (a ? '<div class="chip-eval' + (a.cp < 0 ? ' neg' : '') + '">' + esc(fmtEval(a)) + '</div>' : '') + '</div>';
     html += '<p class="card-text">Starting position. Press <b>&gt;</b> to step through the game' +
       (done ? ' \u2014 every move is classified below.' : '; analysis is still running.') + '</p>';
+    if (g.book && g.book.opening) {
+      const bn = g.book.count;
+      html += '<div class="hint"><span class="swatch" style="background:' + CLS.book.color + '"></span>Opening: <b style="color:#d2a679">' +
+        esc(g.book.opening) + '</b> \u00B7 ' + bn + (bn === 1 ? ' book move' : ' book moves') + '</div>';
+    }
     if (done) html += summaryHtml();
 
     const startA = state.analysis[0];
@@ -1209,12 +1454,15 @@ function renderCard() {
     const moverName = mv.color === 'w' ? 'White' : 'Black';
     const turnBefore = state.analysis[k];
 
-    if (r) {
+    if (r && CLS[r.cls]) {
       const cl = CLS[r.cls];
       html += '<div class="card-head"><div class="badge-lg" style="background:' + cl.color + ';color:' + cl.fg + '">' + esc(cl.sym) + '</div>' +
         '<div class="card-title">' + esc(mv.san) + '<small style="color:' + cl.color + '">' + cl.label + '</small></div>' +
         '<div class="chip-eval' + (state.analysis[state.ply].cp < 0 ? ' neg' : '') + '">' + esc(fmtEval(state.analysis[state.ply])) + '</div></div>';
       html += '<p class="card-text">' + esc(commentFor(k)) + '</p>';
+      if (g.book && g.book.count > 0 && k === g.book.count) {
+        html += '<p class="note" style="color:#d2a679">Out of book \u2014 the game leaves known opening theory here.</p>';
+      }
     } else {
       const prev = k > 0 ? g.moves[k - 1] : null;
       html += '<div class="card-head"><div class="card-title">' + esc(mv.san) + '<small style="color:var(--muted)">Move ' + (Math.floor(k / 2) + 1) + (mv.color === 'w' ? '' : '\u2026') + '</small></div></div>';
@@ -1268,7 +1516,7 @@ function buildMoveList() {
 function updateMoveTag(k) {
   const b = state.moveEls[k];
   const r = state.results[k];
-  if (!b || !r) return;
+  if (!b || !r || !CLS[r.cls]) return;
   const t = b.querySelector('.tag');
   const cl = CLS[r.cls];
   t.textContent = cl.sym;
@@ -1635,8 +1883,7 @@ function wireEvents() {
 }
 
 async function boot() {
-  lsRemove(LEGACY_CACHE);
-  lsRemove(LEGACY_CACHE_V6);
+  migrateStorage();
   loadPrefs();
   applyPrefs();
   loadProfiles();
@@ -1647,12 +1894,10 @@ async function boot() {
     return;
   }
 
-  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
+  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V7) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
   let restored = false;
   if (saved) restored = !!loadGame(saved, {}).ok;
-  lsRemove(LEGACY_PGN_V6);
-  lsRemove(LEGACY_PGN);
-  lsRemove(LEGACY_USER);
+  cleanupLegacyStorage();
   if (!restored) {
     render();
     openSheet('user');
