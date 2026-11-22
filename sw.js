@@ -1,7 +1,7 @@
 /* ChessLens service worker — app shell + CDN assets cached for offline use */
 'use strict';
 
-const VERSION = 'v7';
+const VERSION = 'v8';
 const SHELL_CACHE = 'chesslens-shell-' + VERSION;
 const CDN_CACHE = 'chesslens-cdn-' + VERSION; // must match CDN_CACHE in app.js
 
