@@ -10,7 +10,7 @@
 /* Apply saved appearance before first paint (avoids a flash of the default theme) */
 (function () {
   try {
-    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v8') || localStorage.getItem('chesslens.prefs.v7') || localStorage.getItem('chesslens.prefs.v6') || '{}');
+    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v9') || localStorage.getItem('chesslens.prefs.v8') || localStorage.getItem('chesslens.prefs.v7') || localStorage.getItem('chesslens.prefs.v6') || '{}');
     var r = document.documentElement;
     if (p && /^[a-z]{2,20}$/.test(p.board)) r.setAttribute('data-board', p.board);
     if (p && /^[a-z]{2,20}$/.test(p.pieces)) r.setAttribute('data-pieces', p.pieces);
@@ -62,6 +62,13 @@
       </div>
 
       <div class="player" id="player-bottom"></div>
+
+      <div id="explore-bar" class="explore-bar" hidden>
+        <span id="mode-badge" class="mode-badge">What if</span>
+        <span id="mode-line" class="mode-line"></span>
+        <button id="btn-back-game" class="btn primary small">Back to the game</button>
+        <button id="btn-close-lesson" class="btn ghost small" hidden>Close lesson</button>
+      </div>
     </div>
 
     <div class="side-col">
@@ -105,6 +112,7 @@
     <div class="tabs" role="tablist">
       <button class="tab active" role="tab" data-tab="import" aria-selected="true">Import</button>
       <button class="tab" role="tab" data-tab="games" aria-selected="false">Games</button>
+      <button class="tab" role="tab" data-tab="learn" aria-selected="false">Learn</button>
     </div>
 
     <section id="tab-import" class="tabpane">
@@ -147,6 +155,12 @@
       </div>
 
       <p id="games-empty" class="set-empty" hidden>No games yet. Use the Import tab to load games from Chess.com or paste a PGN.</p>
+    </section>
+
+    <section id="tab-learn" class="tabpane" hidden>
+      <p class="set-help">Step through the main ideas of essential openings, one move at a time, right on the board.</p>
+      <div id="learn-list" class="glist"></div>
+      <p class="set-empty">More openings and practice bots are planned for a future update.</p>
     </section>
   </div>
 </div>
@@ -193,6 +207,19 @@
         <button id="btn-add-profile" class="btn primary">Add</button>
       </div>
       <p id="profile-msg" class="msg" role="status"></p>
+    </section>
+
+    <section class="set-sec">
+      <h3>Analysis strength</h3>
+      <p class="set-help">Controls how deep the engine looks and how long it thinks per move. Casual is fastest and gentlest on older phones; Strong is more accurate but slower. Changing it re-analyzes the open game, and results are saved per level.</p>
+      <div id="engine-levels" class="opts"></div>
+      <p id="engine-hint" class="set-help" hidden>This device looks modest, so Casual is recommended.</p>
+      <p id="engine-msg" class="msg" role="status"></p>
+    </section>
+
+    <section class="set-sec">
+      <h3>Move sounds</h3>
+      <div id="sound-opts" class="opts"></div>
     </section>
 
     <section class="set-sec">
