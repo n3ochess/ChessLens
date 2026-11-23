@@ -22,12 +22,17 @@ const LOW_END = (function () {
 /* Max number of plies (half-moves) that can be labelled "Book". Tweak freely (e.g. 8–16). */
 const BOOK_MAX_PLIES = 12;
 
-/* localStorage keys (v9) + legacy keys migrated/cleaned on boot */
-const LS_PROFILES = 'chesslens.profiles.v9';
-const LS_PREFS = 'chesslens.prefs.v9';
-const LS_PGN = 'chesslens.lastpgn.v9';
-const LS_CACHE = 'chesslens.cache.v9';
-const LS_LIB = 'chesslens.library.v9';
+/* localStorage keys (v10) + legacy keys migrated/cleaned on boot */
+const LS_PROFILES = 'chesslens.profiles.v10';
+const LS_PREFS = 'chesslens.prefs.v10';
+const LS_PGN = 'chesslens.lastpgn.v10';
+const LS_CACHE = 'chesslens.cache.v10';
+const LS_LIB = 'chesslens.library.v10';
+const LEGACY_PROFILES_V9 = 'chesslens.profiles.v9';
+const LEGACY_PREFS_V9 = 'chesslens.prefs.v9';
+const LEGACY_PGN_V9 = 'chesslens.lastpgn.v9';
+const LEGACY_CACHE_V9 = 'chesslens.cache.v9';
+const LEGACY_LIB_V9 = 'chesslens.library.v9';
 const LEGACY_PROFILES_V8 = 'chesslens.profiles.v8';
 const LEGACY_PREFS_V8 = 'chesslens.prefs.v8';
 const LEGACY_PGN_V8 = 'chesslens.lastpgn.v8';
@@ -44,7 +49,7 @@ const LEGACY_PGN_V6 = 'chesslens.lastpgn.v6';
 const LEGACY_PGN = 'chesslens.lastpgn';
 const LEGACY_CACHE_V6 = 'chesslens.cache.v6';
 const LEGACY_CACHE = 'chesslens.cache.v5';
-const CDN_CACHE = 'chesslens-cdn-v9'; // must match sw.js
+const CDN_CACHE = 'chesslens-cdn-v10'; // must match sw.js
 const MAX_CACHED_GAMES = 10;
 const MAX_PROFILES = 20;
 const MAX_LIBRARY = 30;
@@ -307,97 +312,503 @@ function computeBook(fens, nMoves) {
 }
 
 /* =====================================================================
-   Guided openings ("Learn"): short main lines with a note for every move.
-   The positions also feed the opening-name lookup of the local book above.
+   Openings (Learn > Openings): idea, typical threats and several lines.
+   Variant notes ('n') are keyed by 0-based ply and only needed after the
+   line leaves the main line; earlier plies reuse the main-line notes.
    ===================================================================== */
-const LESSONS = [
-  {
-    id: 'italian', name: 'Italian Game', side: 'w',
-    blurb: 'White develops fast and aims the bishop at f7. A friendly first opening with clear plans.',
-    moves: 'e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6 O-O O-O',
-    notes: [
-      "White claims the center and opens lines for the queen and the f1-bishop.",
-      "Black mirrors the idea: a pawn in the center and open lines for the queen and the f8-bishop.",
-      "The knight develops, attacks the e5 pawn and gets White ready to castle.",
-      "Black defends e5 and develops a piece at the same time.",
-      "The Italian bishop eyes f7, Black's most sensitive square early in the game.",
-      "Black develops the bishop to the matching diagonal. This is the Giuoco Piano, the \"quiet game\".",
-      "Prepares d4 to build a big pawn center and gives the bishop a retreat square on b3.",
-      "Black develops and puts pressure on the e4 pawn.",
-      "A solid choice: d3 supports e4 and keeps the position flexible instead of forcing matters.",
-      "Black supports the e5 pawn and frees the c8-bishop.",
-      "White castles: the king is safe and the rook joins the game.",
-      "Black does the same. Both sides are developed and the middlegame plans begin (Re1, Nbd2, a later d4 or b4)."
-    ]
-  },
-  {
-    id: 'ruy', name: 'Ruy Lopez', side: 'w',
-    blurb: 'The Spanish Game: slow, lasting pressure on e5 through the c6-knight. Rich and strategic.',
-    moves: 'e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3',
-    notes: [
-      "White grabs the center and opens lines for the queen and the f1-bishop.",
-      "Black mirrors with a center pawn of their own.",
-      "The knight attacks e5 and develops toward castling.",
-      "Black defends the pawn and develops.",
-      "The Ruy Lopez: the bishop pressures the knight that guards e5. It is not winning a pawn yet, just building long-term pressure.",
-      "The Morphy Defense: Black asks the bishop what it wants to do.",
-      "White keeps the bishop on the diagonal. Taking on c6 would be the Exchange Variation, a different plan.",
-      "Black develops and attacks the e4 pawn.",
-      "White castles first and lets e4 go for now. Taking it would lead to the sharp Open Variation.",
-      "Black picks the solid Closed Spanish: e5 is protected and the king is ready to castle.",
-      "The rook defends e4, so the bishop can retreat without losing the pawn.",
-      "Black gains space on the queenside and asks the bishop to move again.",
-      "The bishop retreats to the long diagonal where it keeps eyeing f7.",
-      "Black solidly supports e5 and opens the c8-bishop.",
-      "Prepares the central break d4 and makes room for the bishop on c2.",
-      "Black castles; both sides have finished their development.",
-      "A useful waiting move: it stops ...Bg4 and gives the king some air. This is the main-line Closed Ruy Lopez."
-    ]
-  },
-  {
-    id: 'caro', name: 'Caro-Kann Defense', side: 'b',
-    blurb: 'A rock-solid answer to 1.e4 that keeps a healthy pawn structure and a free light-squared bishop.',
-    moves: 'e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7',
-    notes: [
-      "White takes the center with the king's pawn.",
-      "The Caro-Kann: Black prepares ...d5 with a pawn on c6, so the c8-bishop is not locked in (unlike the French).",
-      "White builds a big pawn center.",
-      "Black challenges the e4 pawn right away.",
-      "White defends e4 with a knight.",
-      "Black trades the center pawn and opens the position.",
-      "White recaptures and leads in development.",
-      "The key Caro-Kann idea: bring the bishop out before closing the pawn chain with ...e6.",
-      "The knight attacks the bishop with tempo.",
-      "The bishop stays active on the diagonal and is safe behind the pawn chain.",
-      "White threatens h5 to harass the bishop.",
-      "Black stops Ng5 and prepares a retreat square on h7.",
-      "White develops the last minor piece toward the center.",
-      "Black develops and supports ...Ngf6. The structure is healthy and there are no weaknesses to attack."
-    ]
-  },
-  {
-    id: 'fourknights', name: 'Four Knights Game', side: 'w',
-    blurb: 'Symmetrical development with a pin on the knights. Simple, solid and great for beginners.',
-    moves: 'e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bb4 O-O O-O d3 d6 Bg5 Bxc3 bxc3 Qe7',
-    notes: [
-      "White grabs the center and opens lines for the queen and the f1-bishop.",
-      "Black mirrors with a center pawn of their own.",
-      "The knight attacks e5 and develops toward castling.",
-      "Black defends e5 and develops.",
-      "The second knight protects e4 and heads the Four Knights setup.",
-      "Black copies the development, and all four knights are now out.",
-      "The Spanish Variation: the bishop pins the c6-knight, which guards e5.",
-      "Black mirrors the pin against the c3-knight.",
-      "White castles and puts the king in safety.",
-      "Black does the same.",
-      "A solid move: d3 supports e4 and opens the c1-bishop.",
-      "Black supports e5 and opens the c8-bishop.",
-      "The bishop pins the f6-knight against the queen, adding pressure.",
-      "Black trades the bishop for the knight, giving White doubled pawns.",
-      "White recaptures. The doubled c-pawns come with an open b-file and strong central control.",
-      "Black sidesteps the pin on the queen. The position is balanced and still very symmetrical."
-    ]
-  }
+const OPENINGS = [
+ {
+  "id": "italian",
+  "name": "Italian Game",
+  "side": "w",
+  "blurb": "White develops fast and aims the bishop at f7. A friendly first opening with clear plans.",
+  "moves": "e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6 O-O O-O",
+  "notes": [
+   "White claims the center and opens lines for the queen and the f1-bishop.",
+   "Black mirrors the idea: a pawn in the center and open lines for the queen and the f8-bishop.",
+   "The knight develops, attacks the e5 pawn and gets White ready to castle.",
+   "Black defends e5 and develops a piece at the same time.",
+   "The Italian bishop eyes f7, Black's most sensitive square early in the game.",
+   "Black develops the bishop to the matching diagonal. This is the Giuoco Piano, the \"quiet game\".",
+   "Prepares d4 to build a big pawn center and gives the bishop a retreat square on b3.",
+   "Black develops and puts pressure on the e4 pawn.",
+   "A solid choice: d3 supports e4 and keeps the position flexible instead of forcing matters.",
+   "Black supports the e5 pawn and frees the c8-bishop.",
+   "White castles: the king is safe and the rook joins the game.",
+   "Black does the same. Both sides are developed and the middlegame plans begin (Re1, Nbd2, a later d4 or b4)."
+  ],
+  "idea": "Develop fast, castle, and build a strong center with c3 and d3 (or d4) while the bishop on c4 eyes f7. It is a game about piece activity and a steady plan, not about an early attack.",
+  "threats": [
+   "The f7 square: with the c4 bishop and a knight on g5, f7 is only defended by the king until Black castles.",
+   "Nxf7 sacrifices (the \"Fried Liver\" idea in the Two Knights) punish a Black player who forgets about f7.",
+   "The d4 break: if Black is slow, d4 opens the center for White's better-developed pieces.",
+   "Black's counter: a well-timed ...d5 frees the position, and ...Nxe4 tricks work if e4 is left loose."
+  ],
+  "variants": [
+   {
+    "name": "Evans Gambit",
+    "note": "White sacrifices the b-pawn for time and a big center.",
+    "moves": "e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5 d4 exd4 O-O Nge7",
+    "n": {
+     "6": "The Evans Gambit: White offers the b-pawn to gain time and build a strong center with c3 and d4.",
+     "7": "Black accepts the pawn and pulls the bishop away from the center.",
+     "8": "White attacks the bishop and prepares d4.",
+     "9": "The bishop retreats but keeps an eye on the e1\u2013a5 diagonal and the c3 pawn.",
+     "10": "White takes the center and opens lines for the pieces.",
+     "11": "Black grabs a second pawn.",
+     "12": "White is a pawn down but far ahead in development. That is the whole point of the gambit.",
+     "13": "Black develops and prepares to defend. The position is sharp and rich in tactics."
+    }
+   },
+   {
+    "name": "Two Knights Defense",
+    "note": "Black counterattacks e4 instead of copying White's bishop.",
+    "moves": "e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5 Bb5+ c6 dxc6 bxc6 Be2",
+    "n": {
+     "5": "The Two Knights Defense: Black counterattacks e4 rather than mirroring the bishop.",
+     "6": "The sharp Knight Attack: the knight and bishop both aim at f7.",
+     "7": "Black's key reply: strike back in the center right away.",
+     "8": "White takes the pawn.",
+     "9": "Black attacks the bishop and aims to win the d5 pawn back later.",
+     "10": "The bishop retreats with check.",
+     "11": "Black blocks the check and attacks the bishop.",
+     "12": "White grabs a pawn.",
+     "13": "Black recaptures and hits the bishop again.",
+     "14": "The bishop retreats. White has an extra pawn, Black has activity and development in return."
+    }
+   }
+  ]
+ },
+ {
+  "id": "ruy",
+  "name": "Ruy Lopez",
+  "side": "w",
+  "blurb": "The Spanish Game: slow, lasting pressure on e5 through the c6-knight. Rich and strategic.",
+  "moves": "e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3",
+  "notes": [
+   "White grabs the center and opens lines for the queen and the f1-bishop.",
+   "Black mirrors with a center pawn of their own.",
+   "The knight attacks e5 and develops toward castling.",
+   "Black defends the pawn and develops.",
+   "The Ruy Lopez: the bishop pressures the knight that guards e5. It is not winning a pawn yet, just building long-term pressure.",
+   "The Morphy Defense: Black asks the bishop what it wants to do.",
+   "White keeps the bishop on the diagonal. Taking on c6 would be the Exchange Variation, a different plan.",
+   "Black develops and attacks the e4 pawn.",
+   "White castles first and lets e4 go for now. Taking it would lead to the sharp Open Variation.",
+   "Black picks the solid Closed Spanish: e5 is protected and the king is ready to castle.",
+   "The rook defends e4, so the bishop can retreat without losing the pawn.",
+   "Black gains space on the queenside and asks the bishop to move again.",
+   "The bishop retreats to the long diagonal where it keeps eyeing f7.",
+   "Black solidly supports e5 and opens the c8-bishop.",
+   "Prepares the central break d4 and makes room for the bishop on c2.",
+   "Black castles; both sides have finished their development.",
+   "A useful waiting move: it stops ...Bg4 and gives the king some air. This is the main-line Closed Ruy Lopez."
+  ],
+  "idea": "Pressure the knight that defends e5, keep long-term tension in the center, and slowly build up with c3 and d4. The plan is strategic: space, a flexible center and pressure on the e-file.",
+  "threats": [
+   "Bxc6 followed by Nxe5 looks like winning a pawn, but ...Qd4 forks the knight and e4, so e5 is \"poisoned\".",
+   "If Black removes the defender of e5 or weakens the king's side, the pin on c6 becomes a real threat.",
+   "The d4 break once c3 is in: it opens the center when White's pieces are ready.",
+   "Black's counterplay: ...Nxe4 ideas in the Open lines, and ...b5 gaining space while the bishop retreats."
+  ],
+  "variants": [
+   {
+    "name": "Exchange Variation",
+    "note": "White trades the bishop for the knight to damage Black's pawns.",
+    "moves": "e4 e5 Nf3 Nc6 Bb5 a6 Bxc6 dxc6 O-O f6 d4 exd4 Nxd4 c5",
+    "n": {
+     "6": "The Exchange Variation: White gives up the bishop pair to wreck Black's pawn structure.",
+     "7": "Black recaptures. The doubled c-pawns are a weakness, but Black gets the bishop pair.",
+     "8": "White castles. Taking on e5 right now would run into ...Qd4, so the pawn is indirectly protected.",
+     "9": "Black supports e5 solidly.",
+     "10": "White opens the center, aiming at Black's weakened queenside pawns.",
+     "11": "Black takes the pawn.",
+     "12": "White recaptures. The plan is to trade pieces and win the endgame with the healthier kingside majority.",
+     "13": "Black kicks the knight and activates the bishops."
+    }
+   },
+   {
+    "name": "Berlin Defense",
+    "note": "Black counterattacks e4 at once. Solid and famously hard to beat.",
+    "moves": "e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Nxe4 d4 Nd6 Bxc6 dxc6 dxe5 Nf5 Qxd8+ Kxd8",
+    "n": {
+     "5": "The Berlin Defense: Black counterattacks e4 right away. Solid and famously hard to crack.",
+     "6": "White castles and lets e4 go for the moment.",
+     "7": "Black takes the pawn.",
+     "8": "White strikes in the center to open lines.",
+     "9": "The knight retreats and attacks the bishop.",
+     "10": "White trades the bishop for the knight.",
+     "11": "Black recaptures.",
+     "12": "White regains the pawn and attacks the knight.",
+     "13": "The knight steps away.",
+     "14": "White trades queens, heading for the famous Berlin endgame.",
+     "15": "Black's king is stuck in the center but very safe. The structure is rock-solid, the \"Berlin Wall\"."
+    }
+   }
+  ]
+ },
+ {
+  "id": "caro",
+  "name": "Caro-Kann Defense",
+  "side": "b",
+  "blurb": "A rock-solid answer to 1.e4 that keeps a healthy pawn structure and a free light-squared bishop.",
+  "moves": "e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7",
+  "notes": [
+   "White takes the center with the king's pawn.",
+   "The Caro-Kann: Black prepares ...d5 with a pawn on c6, so the c8-bishop is not locked in (unlike the French).",
+   "White builds a big pawn center.",
+   "Black challenges the e4 pawn right away.",
+   "White defends e4 with a knight.",
+   "Black trades the center pawn and opens the position.",
+   "White recaptures and leads in development.",
+   "The key Caro-Kann idea: bring the bishop out before closing the pawn chain with ...e6.",
+   "The knight attacks the bishop with tempo.",
+   "The bishop stays active on the diagonal and is safe behind the pawn chain.",
+   "White threatens h5 to harass the bishop.",
+   "Black stops Ng5 and prepares a retreat square on h7.",
+   "White develops the last minor piece toward the center.",
+   "Black develops and supports ...Ngf6. The structure is healthy and there are no weaknesses to attack."
+  ],
+  "idea": "Black prepares ...d5 with a solid pawn on c6, keeping a healthy structure and a free light-squared bishop. The goal is safety first and counterplay later.",
+  "threats": [
+   "After exd5 cxd5, White's Qb3 hits d5 and b7 at the same time.",
+   "In the Classical line, h4\u2013h5 harasses the bishop, so Black must keep it safe on g6 or h7.",
+   "Do not lock the bishop in with ...e6 before developing it: that is the typical French problem.",
+   "In the Advance Variation Black attacks the base of the chain with ...c5 and ...Qb6."
+  ],
+  "variants": [
+   {
+    "name": "Advance Variation",
+    "note": "White gains space with e5; Black hits the pawn chain.",
+    "moves": "e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2 c5 Be3 Nc6 O-O Qb6",
+    "n": {
+     "4": "The Advance Variation: White gains space and fixes the pawn chain.",
+     "5": "Black develops the bishop BEFORE playing ...e6. That is the Caro-Kann trump.",
+     "6": "White develops the knight.",
+     "7": "Now the bishop is outside the pawn chain and safe.",
+     "8": "White prepares to castle.",
+     "9": "Black attacks the base of White's pawn chain, d4.",
+     "10": "White defends d4.",
+     "11": "Black adds more pressure on d4.",
+     "12": "White castles.",
+     "13": "Black pressures d4 and b2. The play is balanced and typical for this line."
+    }
+   },
+   {
+    "name": "Exchange Variation",
+    "note": "White simplifies into a symmetrical structure.",
+    "moves": "e4 c6 d4 d5 exd5 cxd5 Bd3 Nc6 c3 Nf6 Bf4 Bg4 Qb3 Qd7",
+    "n": {
+     "4": "The Exchange Variation: White simplifies and gets a symmetrical pawn structure.",
+     "5": "Black recaptures and the c-file opens.",
+     "6": "White develops and eyes the kingside.",
+     "7": "Black develops the knight.",
+     "8": "White solidifies the d4 pawn.",
+     "9": "Black develops and adds pressure on d5.",
+     "10": "White develops the bishop outside the pawn chain.",
+     "11": "Black does the same idea and pins the f3 knight.",
+     "12": "White hits d5 and b7 at once.",
+     "13": "Black protects b7 and keeps everything together."
+    }
+   }
+  ]
+ },
+ {
+  "id": "fourknights",
+  "name": "Four Knights Game",
+  "side": "w",
+  "blurb": "Symmetrical development with a pin on the knights. Simple, solid and great for beginners.",
+  "moves": "e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bb4 O-O O-O d3 d6 Bg5 Bxc3 bxc3 Qe7",
+  "notes": [
+   "White grabs the center and opens lines for the queen and the f1-bishop.",
+   "Black mirrors with a center pawn of their own.",
+   "The knight attacks e5 and develops toward castling.",
+   "Black defends e5 and develops.",
+   "The second knight protects e4 and heads the Four Knights setup.",
+   "Black copies the development, and all four knights are now out.",
+   "The Spanish Variation: the bishop pins the c6-knight, which guards e5.",
+   "Black mirrors the pin against the c3-knight.",
+   "White castles and puts the king in safety.",
+   "Black does the same.",
+   "A solid move: d3 supports e4 and opens the c1-bishop.",
+   "Black supports e5 and opens the c8-bishop.",
+   "The bishop pins the f6-knight against the queen, adding pressure.",
+   "Black trades the bishop for the knight, giving White doubled pawns.",
+   "White recaptures. The doubled c-pawns come with an open b-file and strong central control.",
+   "Black sidesteps the pin on the queen. The position is balanced and still very symmetrical."
+  ],
+  "idea": "Develop all four knights, protect e4 and e5, and play simply: castle, d3, Bg5 or Bb5. The goal is a safe, symmetrical position with easy plans.",
+  "threats": [
+   "Pin ideas: Bb5 against ...Bb4, and Bg5 pinning the f6 knight.",
+   "Nxe5 tricks when the c6 knight is pinned and e5 loses protection.",
+   "In the Scotch line d4 opens the center at once, so check for Nxe5 and ...Bxc3 tactics.",
+   "After ...Bxc3, doubled pawns give White the bishop pair and open files."
+  ],
+  "variants": [
+   {
+    "name": "Scotch Four Knights",
+    "note": "White opens the center right away with d4.",
+    "moves": "e4 e5 Nf3 Nc6 Nc3 Nf6 d4 exd4 Nxd4 Bb4 Nxc6 bxc6 Bd3 d5 exd5 cxd5",
+    "n": {
+     "6": "The Scotch Four Knights: White opens the center at once.",
+     "7": "Black takes the pawn.",
+     "8": "White recaptures and centralizes the knight.",
+     "9": "Black pins the c3 knight.",
+     "10": "White trades the knight to damage Black's pawns.",
+     "11": "Black recaptures.",
+     "12": "White develops the bishop.",
+     "13": "Black grabs the center.",
+     "14": "White takes the pawn.",
+     "15": "Black recaptures. The position is open and balanced, with active pieces on both sides."
+    }
+   }
+  ]
+ }
+];
+
+/* =====================================================================
+   Interactive lessons (Learn > Lessons). Positions and solutions were
+   verified with a legal-move checker. accept = allowed first moves (uci).
+   ===================================================================== */
+const DRILLS = [
+ {
+  "id": "castling",
+  "name": "Castling",
+  "blurb": "Tuck the king away and bring a rook into play in one move.",
+  "goal": "Castling moves the king two squares toward a rook, and the rook jumps over it. It only works if neither piece has moved, the squares between are empty, and the king is not in check or passing through an attacked square.",
+  "steps": [
+   {
+    "fen": "r3k2r/pppq1ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 8",
+    "task": "Castle kingside (short): move the king two squares toward the h1 rook.",
+    "accept": [
+     "e1g1"
+    ],
+    "hint": "Drag the king from e1 to g1 \u2014 the rook will jump to f1 by itself.",
+    "ok": "Castled! The king is tucked behind its pawns and the h1 rook now sits on f1, ready for action.",
+    "wrong": {
+     "e1f1": "The king only stepped one square. Castling is a two-square king move: go to g1.",
+     "h1f1": "Moving the rook alone is not castling. Move the king two squares and the rook follows."
+    }
+   },
+   {
+    "fen": "r3kb1r/ppp2ppp/2n1bn2/3pp3/3PP3/2N1BN2/PPPQ1PPP/R3KB1R w KQkq - 0 8",
+    "task": "The f1 bishop is still at home, so short castling is not possible. Castle queenside (long).",
+    "accept": [
+     "e1c1"
+    ],
+    "hint": "Drag the king from e1 to c1 \u2014 the a1 rook jumps to d1.",
+    "ok": "Long castling: the king goes to c1 and the rook to d1. All the squares between king and rook had to be empty.",
+    "wrong": {
+     "e1d1": "One step is not castling. For long castling the king travels two squares to c1."
+    }
+   },
+   {
+    "fen": "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R b KQkq - 0 5",
+    "task": "You play Black. Castle kingside to get your king to safety.",
+    "accept": [
+     "e8g8"
+    ],
+    "hint": "Drag the king from e8 to g8.",
+    "ok": "Black castles too: the king goes to g8 and the rook to f8. The same rules apply to both colors.",
+    "wrong": {
+     "e8f8": "Only one square. Castling needs the king to jump two squares: g8.",
+     "h8f8": "The rook cannot castle by itself. Move the king two squares."
+    }
+   }
+  ]
+ },
+ {
+  "id": "enpassant",
+  "name": "En Passant",
+  "blurb": "A special pawn capture that is only available for one move.",
+  "goal": "If an enemy pawn jumps two squares and lands right beside your pawn, you may capture it as if it had moved only one square. You must do it immediately, or the chance is gone.",
+  "steps": [
+   {
+    "fen": "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3",
+    "task": "Black just played ...d5, jumping two squares right next to your e5 pawn. Capture it en passant.",
+    "accept": [
+     "e5d6"
+    ],
+    "hint": "Move the e5 pawn diagonally to d6, the square the black pawn jumped over.",
+    "ok": "Exd6 en passant! Your pawn lands on d6 and the black pawn on d5 is removed, as if it had only moved one square.",
+    "wrong": {
+     "e5e6": "Pushing is legal, but you can capture the d5 pawn \u201cin passing\u201d right now. Move diagonally to d6."
+    }
+   },
+   {
+    "fen": "rnbqkbnr/pppp1ppp/8/8/3Pp3/5N2/PPP1PPPP/RNBQKB1R b KQkq d3 0 3",
+    "task": "You play Black. White just pushed d2\u2013d4 beside your e4 pawn. Capture en passant.",
+    "accept": [
+     "e4d3"
+    ],
+    "hint": "Move the e4 pawn diagonally to d3.",
+    "ok": "Exd3 en passant! It works for Black too, and only on the very next move after the double step.",
+    "wrong": {
+     "e4e3": "Advancing is legal, but the en passant chance would be gone next move. Capture on d3 now."
+    }
+   }
+  ]
+ },
+ {
+  "id": "pin",
+  "name": "Pin",
+  "blurb": "Freeze a piece because moving it would expose something more valuable.",
+  "goal": "A pin attacks a piece that cannot (or should not) move because a more valuable piece stands behind it on the same line. Bishops, rooks and queens create pins.",
+  "steps": [
+   {
+    "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/4P3/3P1N2/PPP2PPP/RNBQKB1R w KQkq - 0 4",
+    "task": "Pin the knight on f6 to the black queen.",
+    "accept": [
+     "c1g5"
+    ],
+    "hint": "Develop the c1 bishop to g5: the knight on f6 is in front of the queen on d8.",
+    "ok": "Bg5 pins the knight to the queen. If it moves, Bxd8 wins the queen \u2014 that is a relative pin.",
+    "wrong": {
+     "c1e3": "A fine developing move, but it pins nothing. Aim at the f6 knight with the queen behind it."
+    }
+   },
+   {
+    "fen": "rnbqkb1r/pppp1ppp/4pn2/8/2PP4/2N5/PP2PPPP/R1BQKBNR b KQkq - 2 4",
+    "task": "You play Black. Pin the white knight on c3 to the king.",
+    "accept": [
+     "f8b4"
+    ],
+    "hint": "The f8 bishop can go to b4: the c3 knight stands between it and the king on e1.",
+    "ok": "Bb4 pins the knight to the king. It cannot legally move at all \u2014 that is an absolute pin (the Nimzo-Indian idea).",
+    "wrong": {
+     "f8e7": "Solid, but it pins nothing. Look for a diagonal that points at the king through the c3 knight."
+    }
+   },
+   {
+    "fen": "4k3/4n3/8/8/8/8/7R/4K3 w - - 0 1",
+    "task": "Pin the black knight on e7 to its king using your rook.",
+    "accept": [
+     "h2e2"
+    ],
+    "hint": "Put the rook on the e-file: Re2.",
+    "ok": "Re2 pins the knight to the king along the e-file. It is frozen, and you can now pile up more pressure on it.",
+    "wrong": {
+     "h2h7": "The rook now attacks the knight along the 7th rank, but the king is not behind it, so it is not a pin."
+    }
+   }
+  ]
+ },
+ {
+  "id": "skewer",
+  "name": "Skewer",
+  "blurb": "Attack a valuable piece so it must move, and win what stands behind it.",
+  "goal": "A skewer is the reverse of a pin: you attack a valuable piece (often the king) on a line, it has to step aside, and you capture the less valuable piece behind it.",
+  "steps": [
+   {
+    "fen": "1r2k3/8/8/8/8/8/7R/4K3 w - - 0 1",
+    "task": "Give a check that skewers the king and wins the rook on b8.",
+    "accept": [
+     "h2h8"
+    ],
+    "hint": "Play Rh8+: the king on e8 is in front of the rook on b8 along the 8th rank.",
+    "ok": "Rh8+ \u2014 the king must leave the 8th rank, and then Rxb8 wins the rook. That is a skewer.",
+    "wrong": {
+     "h2e2": "That is a check, but nothing stands behind the king on the e-file. A skewer needs a piece to win behind it."
+    }
+   },
+   {
+    "fen": "7r/6k1/8/8/8/8/8/2B3K1 w - - 0 1",
+    "task": "Skewer the king and the rook on h8 with your bishop.",
+    "accept": [
+     "c1b2"
+    ],
+    "hint": "Bb2+ checks along the long diagonal; the rook on h8 is behind the king.",
+    "ok": "Bb2+! The king has to move, and then the bishop takes the rook on h8. Attack from far away so the king cannot just capture you.",
+    "wrong": {
+     "c1h6": "The king simply captures the bishop on h6. Use the long diagonal from a distance."
+    }
+   },
+   {
+    "fen": "3r4/8/8/3k4/8/8/8/R3K3 w - - 0 1",
+    "task": "Win the black rook with a skewer along the d-file.",
+    "accept": [
+     "a1d1"
+    ],
+    "hint": "Play Rd1+: the king on d5 is in front of the rook on d8.",
+    "ok": "Rd1+ and the king has to move off the d-file, so Rxd8 follows. The king was the front piece of the skewer.",
+    "wrong": {
+     "a1a5": "That is a check, but nothing is behind the king on the 5th rank. Find the line with a rook behind the king."
+    }
+   }
+  ]
+ },
+ {
+  "id": "mates",
+  "name": "Checkmate Patterns",
+  "blurb": "Five classic ways to finish the game.",
+  "goal": "Checkmate means the king is attacked and cannot escape, block or capture. Learning a few patterns helps you spot mates in real games.",
+  "steps": [
+   {
+    "fen": "6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1",
+    "name": "Back-rank mate",
+    "task": "Back-rank mate: the black king is boxed in by its own pawns. Deliver checkmate.",
+    "accept": [
+     "a1a8"
+    ],
+    "hint": "Move the rook to the 8th rank.",
+    "ok": "Ra8#! The king cannot step forward because its own pawns block it \u2014 the classic back-rank mate.",
+    "wrong": {}
+   },
+   {
+    "fen": "7k/R7/8/8/8/8/1R6/4K3 w - - 0 1",
+    "name": "Ladder mate",
+    "task": "Ladder mate: use your two rooks to checkmate.",
+    "accept": [
+     "b2b8"
+    ],
+    "hint": "One rook controls the 7th rank; bring the other to the 8th.",
+    "ok": "Rb8#! The rooks work like a ladder: one covers the 7th rank, the other gives check on the 8th.",
+    "wrong": {
+     "a7h7": "Check, but the king simply captures the undefended rook on h7."
+    }
+   },
+   {
+    "fen": "7k/5K2/6Q1/8/8/8/8/8 w - - 0 1",
+    "name": "Queen and king",
+    "task": "Queen and king: checkmate in one move. The queen must be protected by your king.",
+    "accept": [
+     "g6g7",
+     "g6g8",
+     "g6h5",
+     "g6h6"
+    ],
+    "hint": "Give check on a square the king cannot capture, such as g7.",
+    "ok": "Checkmate! The queen is protected by the king and every escape square is covered.",
+    "wrong": {
+     "g6h7": "Check, but the king can capture on h7: nothing protects the queen there."
+    }
+   },
+   {
+    "fen": "6rk/6pp/8/6N1/8/8/8/6K1 w - - 0 1",
+    "name": "Smothered mate",
+    "task": "Smothered mate: the king is surrounded by its own pieces. Find the knight move that mates.",
+    "accept": [
+     "g5f7"
+    ],
+    "hint": "The knight jumps to f7, attacking h8.",
+    "ok": "Nf7#! The king is smothered by its own rook and pawns, and a knight check cannot be blocked.",
+    "wrong": {}
+   },
+   {
+    "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
+    "name": "Scholar's mate",
+    "task": "Scholar's mate: the queen and bishop aim at f7. Finish the game.",
+    "accept": [
+     "h5f7"
+    ],
+    "hint": "Take on f7 with the queen, protected by the c4 bishop.",
+    "ok": "Qxf7#! The pawn on f7 was only defended by the king, and the bishop protects the queen. Defend f7 early!",
+    "wrong": {
+     "h5h7": "Taking h7 is not check and leaves your queen loose. Look for the weak f7 square."
+    }
+   }
+  ]
+ }
 ];
 
 const $ = (sel, root) => (root || document).querySelector(sel);
@@ -469,7 +880,9 @@ const state = {
   profiles: [],
   library: [],
   repSel: null,
-  prefs: { board: 'green', pieces: 'neo', engine: DEFAULT_LEVEL, sound: true },
+  prefs: { board: 'green', pieces: 'neo', engine: DEFAULT_LEVEL, sound: true, botColor: 'w', botLevel: 'easy', done: {} },
+  learnSub: 'openings',
+  learnOpening: null,
   analysisDepth: DEPTH,
   explore: null,
   exploreReq: 0,
@@ -497,12 +910,17 @@ function pieceHtml(type, color, styleOverride) {
 function loadPrefs() {
   let raw = null;
   try {
-    raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS_V8) || lsGet(LEGACY_PREFS_V7) || lsGet(LEGACY_PREFS);
+    raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS_V9) || lsGet(LEGACY_PREFS_V8) || lsGet(LEGACY_PREFS_V7) || lsGet(LEGACY_PREFS);
     const o = JSON.parse(raw || '{}');
     if (o && BOARD_THEMES.some((t) => t.id === o.board)) state.prefs.board = o.board;
     if (o && PIECE_STYLES.some((s) => s.id === o.pieces)) state.prefs.pieces = o.pieces;
     if (o && ENGINE_LEVELS.some((l) => l.id === o.engine)) state.prefs.engine = o.engine;
     if (o && typeof o.sound === 'boolean') state.prefs.sound = o.sound;
+    if (o && (o.botColor === 'w' || o.botColor === 'b' || o.botColor === 'r')) state.prefs.botColor = o.botColor;
+    if (o && /^[a-z]{3,12}$/.test(o.botLevel || '')) state.prefs.botLevel = o.botLevel;
+    if (o && o.done && typeof o.done === 'object') {
+      Object.keys(o.done).forEach((k) => { if (/^[a-z]{2,20}$/.test(k) && o.done[k] === true) state.prefs.done[k] = true; });
+    }
   } catch (e) { /* ignore */ }
   /* first run on modest hardware: start with the lightest preset */
   if (!raw && LOW_END) state.prefs.engine = 'casual';
@@ -537,7 +955,7 @@ function saveProfiles() {
 function loadProfiles() {
   let list = [];
   let active = '';
-  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES_V8) || lsGet(LEGACY_PROFILES_V7) || lsGet(LEGACY_PROFILES);
+  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES_V9) || lsGet(LEGACY_PROFILES_V8) || lsGet(LEGACY_PROFILES_V7) || lsGet(LEGACY_PROFILES);
   try {
     if (raw) {
       const o = JSON.parse(raw);
@@ -798,29 +1216,35 @@ function migrateCacheObj(raw) {
 function migrateStorage() {
   try {
     if (lsGet(LS_CACHE) === null) {
-      const old = lsGet(LEGACY_CACHE_V8) || lsGet(LEGACY_CACHE_V7);
-      if (old) {
-        const m = migrateCacheObj(old);
-        if (m) lsSet(LS_CACHE, JSON.stringify(m));
+      const v9 = lsGet(LEGACY_CACHE_V9);
+      if (v9) {
+        lsSet(LS_CACHE, v9);
+      } else {
+        const old = lsGet(LEGACY_CACHE_V8) || lsGet(LEGACY_CACHE_V7);
+        if (old) {
+          const m = migrateCacheObj(old);
+          if (m) lsSet(LS_CACHE, JSON.stringify(m));
+        }
       }
     }
   } catch (e) { /* ignore */ }
   try {
     if (lsGet(LS_LIB) === null) {
-      const oldLib = lsGet(LEGACY_LIB_V8);
+      const oldLib = lsGet(LEGACY_LIB_V9) || lsGet(LEGACY_LIB_V8);
       if (oldLib) lsSet(LS_LIB, oldLib);
     }
   } catch (e) { /* ignore */ }
+  lsRemove(LEGACY_CACHE_V9);
   lsRemove(LEGACY_CACHE_V8);
   lsRemove(LEGACY_CACHE_V7);
   lsRemove(LEGACY_CACHE_V6);
   lsRemove(LEGACY_CACHE);
 }
 function cleanupLegacyStorage() {
-  if (lsGet(LS_PREFS) !== null) { lsRemove(LEGACY_PREFS_V8); lsRemove(LEGACY_PREFS_V7); lsRemove(LEGACY_PREFS); }
-  if (lsGet(LS_PROFILES) !== null) { lsRemove(LEGACY_PROFILES_V8); lsRemove(LEGACY_PROFILES_V7); lsRemove(LEGACY_PROFILES); lsRemove(LEGACY_USER); }
-  if (lsGet(LS_PGN) !== null) { lsRemove(LEGACY_PGN_V8); lsRemove(LEGACY_PGN_V7); lsRemove(LEGACY_PGN_V6); lsRemove(LEGACY_PGN); }
-  if (lsGet(LS_LIB) !== null) lsRemove(LEGACY_LIB_V8);
+  if (lsGet(LS_PREFS) !== null) { lsRemove(LEGACY_PREFS_V9); lsRemove(LEGACY_PREFS_V8); lsRemove(LEGACY_PREFS_V7); lsRemove(LEGACY_PREFS); }
+  if (lsGet(LS_PROFILES) !== null) { lsRemove(LEGACY_PROFILES_V9); lsRemove(LEGACY_PROFILES_V8); lsRemove(LEGACY_PROFILES_V7); lsRemove(LEGACY_PROFILES); lsRemove(LEGACY_USER); }
+  if (lsGet(LS_PGN) !== null) { lsRemove(LEGACY_PGN_V9); lsRemove(LEGACY_PGN_V8); lsRemove(LEGACY_PGN_V7); lsRemove(LEGACY_PGN_V6); lsRemove(LEGACY_PGN); }
+  if (lsGet(LS_LIB) !== null) { lsRemove(LEGACY_LIB_V9); lsRemove(LEGACY_LIB_V8); }
 }
 
 /* =====================================================================
@@ -828,7 +1252,7 @@ function cleanupLegacyStorage() {
    ===================================================================== */
 function loadLibrary() {
   try {
-    const o = JSON.parse(lsGet(LS_LIB) || lsGet(LEGACY_LIB_V8) || '[]');
+    const o = JSON.parse(lsGet(LS_LIB) || lsGet(LEGACY_LIB_V9) || lsGet(LEGACY_LIB_V8) || '[]');
     state.library = Array.isArray(o)
       ? o.filter((e) => e && typeof e.id === 'string' && typeof e.pgn === 'string').slice(0, MAX_LIBRARY)
       : [];
@@ -961,8 +1385,15 @@ const engine = {
     this.worker.onerror = () => { if (this.handler) this.handler('__error__'); };
     await this.command('uci', 'uciok', 30000);
     this.currentMultiPv = 1;
+    this.skill = 20;
     this.post('setoption name MultiPV value 1');
     await this.command('isready', 'readyok', 20000);
+  },
+
+  setSkill(n) {
+    if (this.skill === n) return;
+    this.skill = n;
+    this.post('setoption name Skill Level value ' + n);
   },
 
   setMultiPv(n) {
@@ -995,15 +1426,16 @@ const engine = {
   /* One search at a time: game scan and What-if requests share the same worker.
      `skip` (optional) lets a queued request cancel itself before it starts. */
   chain: Promise.resolve(),
-  analyze(fen, depth, multiPv, movetime, skip) {
-    const run = () => ((skip && skip()) ? null : this._analyze(fen, depth, multiPv, movetime));
+  analyze(fen, depth, multiPv, movetime, skip, skill) {
+    const run = () => ((skip && skip()) ? null : this._analyze(fen, depth, multiPv, movetime, skill));
     const p = this.chain.then(run);
     this.chain = p.catch(() => {});
     return p;
   },
 
-  _analyze(fen, depth, multiPv, movetime) {
+  _analyze(fen, depth, multiPv, movetime, skill) {
     return new Promise((resolve, reject) => {
+      this.setSkill(skill == null ? 20 : skill);   /* 20 = full strength; lower only for the bot */
       this.setMultiPv(multiPv || 1);
       const lines = {};
       const dog = setTimeout(() => this.post('stop'), 25000);
@@ -1721,7 +2153,7 @@ function renderOverlay() {
   const g = state.game;
   let h = '';
   if (state.lesson) {
-    h = '';
+    h = sessionOverlay();
   } else if (state.explore) {
     const a = exploreEval();
     if (a && a.best && a.best.length >= 4) h += arrowSvg(a.best.slice(0, 2), a.best.slice(2, 4));
@@ -1749,7 +2181,7 @@ function renderOverlay() {
 }
 
 function viewEval() {
-  if (state.lesson) return null;
+  if (state.lesson) return state.lesson.kind === 'bot' ? (state.lesson.evals[state.lesson.fens[state.lesson.idx]] || null) : null;
   if (state.explore) return exploreEval();
   return state.game ? state.analysis[state.ply] : null;
 }
@@ -1760,14 +2192,14 @@ function renderEval() {
   const label = $('#eval-label');
   bar.classList.toggle('wb', !state.flipped);
   bar.classList.toggle('wt', state.flipped);
-  if (state.lesson) {
+  if (state.lesson && state.lesson.kind !== 'bot') {
     fill.style.height = '50%';
     label.className = 'eval-label ' + (state.flipped ? 'lt' : 'lb') + ' onwhite';
     label.textContent = '\u2013';
     return;
   }
   const a = viewEval();
-  if (state.explore && !a) { label.textContent = '\u2026'; return; }   /* keep the bar while evaluating */
+  if ((state.explore || state.lesson) && !a) { label.textContent = '\u2026'; return; }   /* keep the bar while evaluating */
   const cp = a ? a.cp : 0;
   const pct = a ? winPct(cp) : 50;
   fill.style.height = pct.toFixed(1) + '%';
@@ -1777,7 +2209,7 @@ function renderEval() {
 }
 
 function renderPlayers() {
-  const h = state.lesson ? { White: 'White', Black: 'Black' } : (state.game ? state.game.headers : {});
+  const h = state.lesson ? sessionHeaders(state.lesson) : (state.game ? state.game.headers : {});
   const white = { name: h.White || 'White', elo: h.WhiteElo, c: 'w' };
   const black = { name: h.Black || 'Black', elo: h.BlackElo, c: 'b' };
   const top = state.flipped ? white : black;
@@ -1946,10 +2378,18 @@ function renderMoveActive() {
 function renderControls() {
   if (state.lesson) {
     const L = state.lesson;
-    $('#btn-first').disabled = L.idx <= 0;
-    $('#btn-prev').disabled = L.idx <= 0;
-    $('#btn-next').disabled = L.idx >= L.moves.length;
-    $('#btn-last').disabled = L.idx >= L.moves.length;
+    if (L.kind === 'study') {
+      $('#btn-first').disabled = L.idx <= 0;
+      $('#btn-prev').disabled = L.idx <= 0;
+      $('#btn-next').disabled = L.idx >= L.moves.length;
+      $('#btn-last').disabled = L.idx >= L.moves.length;
+    } else {
+      /* practice: "<" takes a move back; drills and bot games have no navigation */
+      $('#btn-first').disabled = true;
+      $('#btn-prev').disabled = !(L.kind === 'practice' && L.moves.length > 0);
+      $('#btn-next').disabled = true;
+      $('#btn-last').disabled = true;
+    }
     return;
   }
   if (state.explore) {
@@ -2264,6 +2704,7 @@ function loadGame(pgn, opts) {
   clearTransient();
   state.explore = null;
   state.exploreReq++;
+  if (state.lesson) killSession(state.lesson);
   state.lesson = null;
   state.analysis = new Array(g.fens.length).fill(null);
   state.results = new Array(g.fens.length - 1).fill(null);
@@ -2362,7 +2803,7 @@ function libItemHtml(e) {
   } else if (e.result === '1/2-1/2') {
     word = 'Draw';
   }
-  const src = e.src === 'chesscom' ? 'Chess.com' : (e.src === 'sample' ? 'Sample' : 'PGN');
+  const src = e.src === 'chesscom' ? 'Chess.com' : (e.src === 'sample' ? 'Sample' : (e.src === 'bot' ? 'Bot game' : 'PGN'));
   const sub = [entryDate(e), src].filter(Boolean).join(' \u00B7 ');
   return '<div class="gitem">' +
     '<button class="game" data-lib="' + esc(e.id) + '">' +
@@ -2404,6 +2845,7 @@ function openSheet(tab) {
   renderUserChips();
   renderGamesTab();
   renderLearnTab();
+  renderPlayTab();
   switchTab(tab || (hasGames() ? 'games' : 'import'));
   document.body.style.overflow = 'hidden';
   const key = (state.username || '').toLowerCase();
@@ -2438,6 +2880,7 @@ function switchTab(name) {
   $('#tab-import').hidden = name !== 'import';
   $('#tab-games').hidden = name !== 'games';
   $('#tab-learn').hidden = name !== 'learn';
+  $('#tab-play').hidden = name !== 'play';
 }
 
 function setMsg(id, text, isErr) {
@@ -2826,6 +3269,12 @@ function exitExplore() {
 
 /* Plays a move from the position currently on the board. Following the game's own move just steps forward. */
 function commitMove(from, to, promo) {
+  if (state.lesson) {
+    state.sel = null;
+    const okk = sessionMove(from, to, promo);
+    if (!okk) renderBoard();
+    return okk;
+  }
   const ch = new Chess();
   ch.load(viewFen());
   const m = ch.move({ from, to, promotion: promo || undefined });
@@ -2862,7 +3311,7 @@ function commitMove(from, to, promo) {
 
 /* ---------- navigation (works for the game, an explored line and a lesson) ---------- */
 function navPrev() {
-  if (state.lesson) { lessonGo(state.lesson.idx - 1); return; }
+  if (state.lesson) { lessonNav('prev'); return; }
   const ex = state.explore;
   if (ex) {
     clearTransient();
@@ -2877,7 +3326,7 @@ function navPrev() {
 }
 
 function navNext() {
-  if (state.lesson) { lessonGo(state.lesson.idx + 1); return; }
+  if (state.lesson) { lessonNav('next'); return; }
   const ex = state.explore;
   if (ex) {
     if (ex.idx >= ex.moves.length) return;
@@ -2894,7 +3343,7 @@ function navNext() {
 }
 
 function navFirst() {
-  if (state.lesson) { lessonGo(0); return; }
+  if (state.lesson) { lessonNav('first'); return; }
   const ex = state.explore;
   if (ex) {
     clearTransient();
@@ -2907,7 +3356,7 @@ function navFirst() {
 }
 
 function navLast() {
-  if (state.lesson) { lessonGo(state.lesson.moves.length); return; }
+  if (state.lesson) { lessonNav('last'); return; }
   const ex = state.explore;
   if (ex) {
     clearTransient();
@@ -2934,10 +3383,6 @@ function sqAtEvent(e) {
   return 'abcdefgh'[col] + (8 - row);
 }
 
-function boardInteractive() {
-  return !!state.game && !state.lesson && !state.promo && !anySheetOpen();
-}
-
 function onBoardDown(e) {
   if (!boardInteractive()) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -2953,7 +3398,7 @@ function onBoardDown(e) {
     return;
   }
   const p = ch.get(sq);
-  if (p && p.color === ch.turn()) {
+  if (p && p.color === ch.turn() && (!state.lesson || p.color === state.lesson.userColor)) {
     const wasSel = !!(state.sel && state.sel.sq === sq);
     const seen = {};
     const targets = [];
@@ -2982,7 +3427,7 @@ function onBoardMove(e) {
     const b = $('#board');
     const size = (b.clientWidth / 8) * 1.1;
     const gh = document.createElement('div');
-    gh.className = 'ghost';
+    gh.className = 'drag-ghost';
     gh.style.setProperty('--sq', size + 'px');
     gh.style.width = size + 'px';
     gh.style.height = size + 'px';
@@ -3045,15 +3490,187 @@ function closePromo() {
   if (el) el.remove();
 }
 
-/* ---------- guided openings (Learn) ---------- */
-function buildLesson(def) {
+/* =====================================================================
+   v10: board sessions  (study | practice | drill | bot)
+   A "session" lives in state.lesson and shares the board with the game:
+     study    - step through an opening line (read only)
+     practice - you play the line, the app validates every move
+     drill    - interactive lessons (castling, pins, mates...)
+     bot      - play against the local engine with coach feedback
+   ===================================================================== */
+const BOT_LEVELS = [
+  { id: 'beginner', name: 'Beginner', desc: '\u2248 600 \u00B7 plays loose', skill: 0,  depth: 1,  time: 80 },
+  { id: 'easy',     name: 'Easy',     desc: '\u2248 1000',                   skill: 4,  depth: 3,  time: 150 },
+  { id: 'medium',   name: 'Medium',   desc: '\u2248 1400',                   skill: 10, depth: 6,  time: 300 },
+  { id: 'hard',     name: 'Hard',     desc: '\u2248 1800',                   skill: 16, depth: 10, time: 500 }
+];
+
+let sessionSeq = 0;
+
+function turnOf(L) { return L.fens[L.idx].split(' ')[1]; }
+
+function killSession(L) {
+  if (!L) return;
+  L.dead = true;
+  clearTimeout(L.timer);
+}
+
+/* Starts a session on the board (closing any previous one) */
+function openSession(L) {
+  clearTransient();
+  closeSheet();
+  const old = state.lesson;
+  if (old) { killSession(old); L.prevFlipped = old.prevFlipped; }
+  else L.prevFlipped = state.flipped;
+  L.id = ++sessionSeq;
+  L.evals = L.evals || {};
+  state.lesson = L;
+  state.flipped = !!L.flip;
+  render();
+}
+
+function closeLesson() {
+  const L = state.lesson;
+  if (!L) return;
+  if (L.kind === 'bot' && !L.over && L.moves.length > 0) {
+    let ok = true;
+    try { ok = window.confirm('Leave this game? It will not be saved.'); } catch (err) { ok = true; }
+    if (!ok) return;
+  }
+  killSession(L);
+  clearTransient();
+  state.lesson = null;
+  state.flipped = L.prevFlipped;
+  render();
+}
+
+/* plays a move on the live line of a session (practice, drill, bot) */
+function applyTo(L, from, to, promo) {
+  const ch = new Chess();
+  ch.load(L.fens[L.idx]);
+  const m = ch.move({ from, to, promotion: promo || undefined });
+  if (!m) return null;
+  L.moves.push(m);
+  L.fens.push(ch.fen());
+  L.idx = L.moves.length;
+  state.anim = moveAnim(m, false);
+  soundFor(m);
+  return m;
+}
+
+function popMove(L) {
+  const m = L.moves.pop();
+  L.fens.pop();
+  L.idx = L.moves.length;
+  if (m) state.anim = moveAnim(m, true);
+  return m;
+}
+
+function sessionCanMove(L) {
+  if (!L || L.dead) return false;
+  if (L.kind === 'practice') return L.status === 'line' && turnOf(L) === L.userColor;
+  if (L.kind === 'drill') return !L.busy && !L.solved && !L.finished;
+  if (L.kind === 'bot') return !L.over && !L.thinking && !L.error && turnOf(L) === L.userColor;
+  return false;
+}
+
+function sessionMove(from, to, promo) {
+  const L = state.lesson;
+  if (!L || !sessionCanMove(L)) return false;
+  if (L.kind === 'practice') return practiceMove(L, from, to, promo);
+  if (L.kind === 'drill') return drillMove(L, from, to, promo);
+  if (L.kind === 'bot') return botUserMove(L, from, to, promo);
+  return false;
+}
+
+function boardInteractive() {
+  if (state.promo || anySheetOpen()) return false;
+  const L = state.lesson;
+  if (L) return sessionCanMove(L);
+  return !!state.game;
+}
+
+/* arrows / badges drawn by sessions */
+function sessionOverlay() {
+  const L = state.lesson;
+  let h = '';
+  const arrow = (uci) => ((uci && uci.length >= 4) ? arrowSvg(uci.slice(0, 2), uci.slice(2, 4)) : '');
+  if (L.kind === 'practice') {
+    if (L.hint && L.status === 'line') {
+      const t = L.th.moves[L.moves.length];
+      if (t) h += arrow(t.from + t.to);
+    }
+  } else if (L.kind === 'drill') {
+    if (L.hint && !L.solved && !L.finished) h += arrow(L.def.steps[L.step].accept[0]);
+  } else if (L.kind === 'bot') {
+    const a = L.evals[L.fens[L.idx]];
+    if (L.hint && a && a.best && sessionCanMove(L)) h += arrow(a.best);
+    const k = L.lastCoach;
+    if (k != null && L.coach[k] && k >= L.moves.length - 2) {
+      const cl = CLS[L.coach[k].cls];
+      const p = sqXY(L.moves[k].to);
+      const cx = (p.x + 0.33).toFixed(3);
+      const cy = (p.y - 0.33).toFixed(3);
+      h += '<circle cx="' + cx + '" cy="' + cy + '" r=".21" fill="' + cl.color + '" stroke="#262421" stroke-width=".03"/>' +
+        '<text x="' + cx + '" y="' + cy + '" font-size=".2" font-weight="800" fill="' + cl.fg + '" text-anchor="middle" dominant-baseline="central" font-family="system-ui,sans-serif">' + esc(cl.sym) + '</text>';
+    }
+  }
+  return h;
+}
+
+function sessionHeaders(L) {
+  if (L.kind === 'bot') {
+    const you = 'You';
+    const bot = 'Bot \u00B7 ' + L.bot.name;
+    return { White: L.userColor === 'w' ? you : bot, Black: L.userColor === 'b' ? you : bot };
+  }
+  return { White: 'White', Black: 'Black' };
+}
+
+/* ---------- engine helpers for sessions ---------- */
+function quickLevel() {
+  const lv = engineLevel();
+  return { xDepth: lv.depth, xTime: Math.max(250, Math.round(lv.movetime * 1.5)) };
+}
+
+function sessionEval(L, fen, lv) {
+  if (L.evals[fen]) return Promise.resolve(L.evals[fen]);
+  L.evalP = L.evalP || {};
+  if (L.evalP[fen]) return L.evalP[fen];
+  const p = (async () => {
+    const ok = await engine.init();
+    if (!ok || L.dead) return null;
+    const a = await analyzeFenQuick(fen, lv, () => L.dead || state.lesson !== L);
+    if (a) L.evals[fen] = a;
+    return a;
+  })().catch(() => null).then((a) => { delete L.evalP[fen]; return a; });
+  L.evalP[fen] = p;
+  return p;
+}
+
+/* =====================================================================
+   Openings: lines, study, practice
+   ===================================================================== */
+function lineOf(def, vi) {
+  if (!vi) return { name: def.name, moves: def.moves, notes: def.notes, prefix: -1, note: def.blurb };
+  const v = def.variants[vi - 1];
+  const a = def.moves.split(/\s+/).filter(Boolean);
+  const b = v.moves.split(/\s+/).filter(Boolean);
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  const notes = b.map((_, i) => (i < p ? def.notes[i] : ((v.n && v.n[i]) || null)));
+  return { name: v.name, moves: v.moves, notes, prefix: p, note: v.note };
+}
+
+function buildLesson(def, vi) {
+  const line = lineOf(def, vi || 0);
   const ch = new Chess();
   const fens = [ch.fen()];
   const moves = [];
-  const toks = def.moves.split(/\s+/).filter(Boolean);
+  const toks = line.moves.split(/\s+/).filter(Boolean);
   for (let i = 0; i < toks.length; i++) {
     const m = ch.move(toks[i], { sloppy: true });
-    if (!m) { console.warn('[ChessLens] lesson line stopped at', def.name, toks[i]); break; }
+    if (!m) { console.warn('[ChessLens] opening line stopped at', def.name, toks[i]); break; }
     moves.push(m);
     fens.push(ch.fen());
   }
@@ -3065,31 +3682,18 @@ function buildLesson(def) {
     if (nm) cur = nm;
     names.push(cur);
   }
-  return { def, fens, moves, names, idx: 0, prevFlipped: state.flipped };
+  return { kind: 'study', def, vi: vi || 0, line, fens, moves, names, notes: line.notes, prefix: line.prefix, idx: 0, flip: def.side === 'b' };
 }
 
-function startLesson(id) {
-  const def = LESSONS.find((l) => l.id === id);
+function startLesson(id, vi) {
+  const def = OPENINGS.find((o) => o.id === id);
   if (!def) return;
-  clearTransient();
-  closeSheet();
-  const L = buildLesson(def);
-  state.lesson = L;
-  state.flipped = def.side === 'b';
-  render();
-}
-
-function closeLesson() {
-  const L = state.lesson;
-  if (!L) return;
-  state.lesson = null;
-  state.flipped = L.prevFlipped;
-  render();
+  openSession(buildLesson(def, vi || 0));
 }
 
 function lessonGo(i) {
   const L = state.lesson;
-  if (!L) return;
+  if (!L || L.kind !== 'study') return;
   const np = clamp(i, 0, L.moves.length);
   if (np === L.idx) return;
   const delta = np - L.idx;
@@ -3104,15 +3708,541 @@ function lessonGo(i) {
   render();
 }
 
+/* nav buttons while a session is open */
+function lessonNav(dir) {
+  const L = state.lesson;
+  if (!L) return;
+  if (L.kind === 'study') {
+    if (dir === 'prev') lessonGo(L.idx - 1);
+    else if (dir === 'next') lessonGo(L.idx + 1);
+    else if (dir === 'first') lessonGo(0);
+    else lessonGo(L.moves.length);
+  } else if (L.kind === 'practice' && dir === 'prev') {
+    practiceUndo(L);
+  }
+}
+
+function startPractice(id, vi) {
+  const def = OPENINGS.find((o) => o.id === id);
+  if (!def) return;
+  const th = buildLesson(def, vi || 0);
+  const ch = new Chess();
+  const L = {
+    kind: 'practice', def, vi: vi || 0, th, fens: [ch.fen()], moves: [], idx: 0,
+    userColor: def.side, flip: def.side === 'b', status: 'line', mistakes: 0, hints: 0,
+    hint: false, fb: null, reply: null
+  };
+  openSession(L);
+  if (def.side === 'b') scheduleReply(L, 500);
+}
+
+function scheduleReply(L, ms) {
+  clearTimeout(L.timer);
+  L.timer = setTimeout(() => {
+    if (state.lesson !== L || L.dead || L.status !== 'line') return;
+    const i = L.moves.length;
+    const t = L.th.moves[i];
+    if (!t) return;
+    const m = applyTo(L, t.from, t.to, t.promotion);
+    if (!m) return;
+    L.reply = { san: m.san, note: L.th.notes[i] };
+    if (L.moves.length >= L.th.moves.length) L.status = 'done';
+    render();
+  }, ms);
+}
+
+function practiceMove(L, from, to, promo) {
+  const i = L.moves.length;
+  const exp = L.th.moves[i];
+  const fenBefore = L.fens[L.idx];
+  const m = applyTo(L, from, to, promo);
+  if (!m) return false;
+  L.hint = false;
+  L.reply = null;
+  const same = !!exp && exp.from === m.from && exp.to === m.to && (exp.promotion || '') === (m.promotion || '');
+  if (same) {
+    L.fb = { ok: true, san: m.san, note: L.th.notes[i], name: L.th.names[i + 1] };
+    if (L.moves.length >= L.th.moves.length) L.status = 'done';
+    else scheduleReply(L, 550);
+  } else {
+    L.status = 'off';
+    L.mistakes++;
+    const bk = ensureBook();
+    const key = posKey(L.fens[L.idx]);
+    L.fb = {
+      ok: false, san: m.san, exp: exp ? exp.san : null, expNote: L.th.notes[i],
+      book: bk.keys.has(key) ? (bk.names.get(key) || 'another known line') : null, eng: null
+    };
+    explainDeviation(L, fenBefore, L.fens[L.idx]);
+  }
+  render();
+  return true;
+}
+
+async function explainDeviation(L, fenB, fenA) {
+  try {
+    const q = quickLevel();
+    const a0 = await sessionEval(L, fenB, q);
+    const a1 = await sessionEval(L, fenA, q);
+    if (!a0 || !a1 || L.dead || !L.fb || L.fb.ok) return;
+    const sgn = L.userColor === 'w' ? 1 : -1;
+    const loss = Math.max(0, winPct(a0.cp * sgn) - winPct(a1.cp * sgn));
+    let t;
+    if (loss < 4) t = 'The engine still likes this move: it is playable, just not the line you are practicing.';
+    else if (loss < 10) t = 'The engine finds it slightly worse than the book move.';
+    else if (loss < 20) t = 'The engine considers it a real mistake.';
+    else t = 'The engine considers it a serious mistake.';
+    L.fb.eng = t + ' (' + fmtEval(a1) + ')';
+    if (state.lesson === L) renderCard();
+  } catch (e) { /* best effort */ }
+}
+
+function practiceUndo(L) {
+  if (L.moves.length === 0) return;
+  clearTimeout(L.timer);
+  popMove(L);
+  /* after taking back, it must be the player's turn again */
+  if (L.moves.length > 0 && turnOf(L) !== L.userColor) popMove(L);
+  L.status = 'line';
+  L.fb = null;
+  L.reply = null;
+  L.hint = false;
+  if (L.def.side === 'b' && L.moves.length === 0) scheduleReply(L, 500);
+  render();
+}
+
+function practiceShow(L) {
+  const i = L.moves.length - (L.status === 'off' ? 1 : 0);
+  const t = L.th.moves[i];
+  if (!t) return;
+  if (L.status === 'off') { popMove(L); L.status = 'line'; L.fb = null; }
+  const m = applyTo(L, t.from, t.to, t.promotion);
+  if (!m) return;
+  L.fb = { ok: true, san: m.san, note: L.th.notes[i], name: L.th.names[i + 1], shown: true };
+  if (L.moves.length >= L.th.moves.length) L.status = 'done';
+  else scheduleReply(L, 550);
+  render();
+}
+
+function practiceRestart(L) {
+  clearTimeout(L.timer);
+  const ch = new Chess();
+  L.fens = [ch.fen()]; L.moves = []; L.idx = 0;
+  L.status = 'line'; L.mistakes = 0; L.hints = 0; L.hint = false; L.fb = null; L.reply = null;
+  render();
+  if (L.def.side === 'b') scheduleReply(L, 500);
+}
+
+/* =====================================================================
+   Interactive lessons (drills)
+   ===================================================================== */
+function startDrill(id) {
+  const def = DRILLS.find((d) => d.id === id);
+  if (!def) return;
+  const L = { kind: 'drill', def, step: 0, fens: [], moves: [], idx: 0, userColor: 'w', flip: false, finished: false };
+  loadDrillStep(L);
+  openSession(L);
+}
+
+function loadDrillStep(L) {
+  const st = L.def.steps[L.step];
+  L.fens = [st.fen];
+  L.moves = [];
+  L.idx = 0;
+  L.userColor = st.fen.split(' ')[1];
+  L.flip = L.userColor === 'b';
+  L.solved = false;
+  L.tries = 0;
+  L.hint = false;
+  L.fb = null;
+  L.busy = false;
+}
+
+function drillMove(L, from, to, promo) {
+  const st = L.def.steps[L.step];
+  const m = applyTo(L, from, to, promo);
+  if (!m) return false;
+  const uci = m.from + m.to + (m.promotion || '');
+  L.hint = false;
+  if (st.accept.indexOf(uci) >= 0) {
+    L.solved = true;
+    L.fb = { ok: true, text: st.ok };
+  } else {
+    L.tries++;
+    L.busy = true;
+    L.fb = { ok: false, text: (st.wrong && st.wrong[uci]) || 'That move is legal, but it does not reach the goal. Try again.' };
+    clearTimeout(L.timer);
+    L.timer = setTimeout(() => {
+      if (state.lesson !== L || L.dead) return;
+      popMove(L);
+      L.busy = false;
+      if (L.tries >= 2) L.hint = true;
+      render();
+    }, 1300);
+  }
+  render();
+  return true;
+}
+
+function drillNext() {
+  const L = state.lesson;
+  if (!L || L.kind !== 'drill' || !L.solved) return;
+  clearTimeout(L.timer);
+  if (L.step + 1 >= L.def.steps.length) {
+    L.finished = true;
+    state.prefs.done = state.prefs.done || {};
+    state.prefs.done[L.def.id] = true;
+    savePrefs();
+    render();
+    return;
+  }
+  L.step++;
+  loadDrillStep(L);
+  state.flipped = L.flip;
+  render();
+}
+
+function drillRestart(L) {
+  clearTimeout(L.timer);
+  L.step = 0;
+  L.finished = false;
+  loadDrillStep(L);
+  state.flipped = L.flip;
+  render();
+}
+
+/* =====================================================================
+   Bot game with coach feedback
+   ===================================================================== */
+function startBot() {
+  const bl = BOT_LEVELS.find((l) => l.id === state.prefs.botLevel) || BOT_LEVELS[1];
+  let color = state.prefs.botColor;
+  if (color !== 'w' && color !== 'b') color = Math.random() < 0.5 ? 'w' : 'b';
+  const ch = new Chess();
+  const L = {
+    kind: 'bot', bot: bl, fens: [ch.fen()], moves: [], idx: 0, userColor: color, flip: color === 'b',
+    over: null, thinking: false, error: false, coach: {}, lastCoach: null, coachBusy: 0, hint: false
+  };
+  openSession(L);
+  botStep(L);
+}
+
+function botResult(L, ch) {
+  if (ch.in_checkmate()) {
+    const winner = ch.turn() === 'w' ? 'b' : 'w';
+    return { text: winner === L.userColor ? 'Checkmate \u2014 you win!' : 'Checkmate \u2014 the bot wins.', result: winner === 'w' ? '1-0' : '0-1' };
+  }
+  let why = 'Draw.';
+  if (ch.in_stalemate()) why = 'Stalemate \u2014 draw.';
+  else if (ch.insufficient_material()) why = 'Draw by insufficient material.';
+  else if (ch.in_threefold_repetition()) why = 'Draw by repetition.';
+  else if (ch.in_draw()) why = 'Draw (50-move rule).';
+  return { text: why, result: '1/2-1/2' };
+}
+
+async function botStep(L) {
+  if (L.dead || state.lesson !== L) return;
+  const ch = new Chess();
+  ch.load(L.fens[L.idx]);
+  if (ch.game_over()) {
+    L.over = botResult(L, ch);
+    L.thinking = false;
+    render();
+    return;
+  }
+  if (ch.turn() === L.userColor) {
+    /* the player's turn: keep the evaluation bar (and hint) up to date */
+    sessionEval(L, L.fens[L.idx], quickLevel()).then(() => {
+      if (state.lesson === L && !L.dead) { renderEval(); renderOverlay(); renderCard(); }
+    });
+    render();
+    return;
+  }
+  L.thinking = true;
+  render();
+  const ok = await engine.init();
+  if (L.dead || state.lesson !== L) return;
+  if (!ok) { L.error = true; L.thinking = false; render(); return; }
+  const t0 = Date.now();
+  let res = null;
+  try { res = await engine.analyze(L.fens[L.idx], L.bot.depth, 1, L.bot.time, () => L.dead || state.lesson !== L, L.bot.skill); }
+  catch (e) { res = null; }
+  if (L.dead || state.lesson !== L) return;
+  const wait = 450 - (Date.now() - t0);
+  if (wait > 0) await sleep(wait);   /* a short human-like pause */
+  if (L.dead || state.lesson !== L) return;
+  L.thinking = false;
+  let m = null;
+  const u = res && res.best && res.best !== '(none)' ? uciToMove(res.best) : null;
+  if (u) m = applyTo(L, u.from, u.to, u.promotion);
+  if (!m) {
+    const list = ch.moves({ verbose: true });
+    if (list.length) { const r = list[Math.floor(Math.random() * list.length)]; m = applyTo(L, r.from, r.to, r.promotion); }
+  }
+  L.hint = false;
+  render();
+  botStep(L);
+}
+
+function botUserMove(L, from, to, promo) {
+  const k = L.moves.length;
+  const fenBefore = L.fens[L.idx];
+  const prev = k > 0 ? L.moves[k - 1] : null;
+  const m = applyTo(L, from, to, promo);
+  if (!m) return false;
+  L.hint = false;
+  render();
+  botStep(L);                                  /* the bot answers first... */
+  coachJob(L, { k, fenBefore, fenAfter: L.fens[L.idx], move: m, prev });   /* ...the coach checks in the background */
+  return true;
+}
+
+async function coachJob(L, p) {
+  L.coachBusy++;
+  if (state.lesson === L) renderCard();
+  try {
+    const q = quickLevel();
+    const a0 = await sessionEval(L, p.fenBefore, q);
+    const a1 = await sessionEval(L, p.fenAfter, q);
+    if (a0 && a1 && !L.dead) {
+      L.coach[p.k] = liveClassify(L, p, a0, a1);
+      L.lastCoach = p.k;
+    }
+  } catch (e) { console.warn('[ChessLens] coach failed', e); }
+  L.coachBusy--;
+  if (state.lesson === L && !L.dead) { renderEval(); renderOverlay(); renderCard(); }
+}
+
+/* Same thresholds as the game analysis, but self-contained for a live game */
+function liveClassify(L, p, A, B) {
+  const mv = p.move;
+  const k = p.k;
+  const sgn = mv.color === 'w' ? 1 : -1;
+  const winBefore = winPct(A.cp * sgn);
+  const winAfter = winPct(B.cp * sgn);
+  const uci = mv.from + mv.to + (mv.promotion || '');
+  const isBest = !!A.best && uci === A.best;
+
+  let bestSan = null;
+  let bestMove = null;
+  if (A.best) {
+    const c0 = new Chess();
+    c0.load(p.fenBefore);
+    const bm = c0.move(uciToMove(A.best));
+    if (bm) { bestSan = bm.san; bestMove = bm; }
+  }
+
+  const bk = ensureBook();
+  let allBook = k < BOOK_MAX_PLIES;
+  let opening = null;
+  for (let j = 1; j <= k + 1 && allBook; j++) {
+    const key = posKey(L.fens[j]);
+    if (!bk.keys.has(key)) allBook = false;
+    else if (bk.names.has(key)) opening = bk.names.get(key);
+  }
+
+  const after = new Chess();
+  after.load(p.fenAfter);
+  let cls;
+  let loss = 0;
+  let sac = false;
+  let tactical = false;
+  if (allBook) {
+    cls = 'book';
+  } else {
+    const gain = (mv.captured ? VAL[mv.captured] : 0) + (mv.promotion ? VAL[mv.promotion] - 1 : 0);
+    const risk = after.game_over() ? 0 : bestCapture(after).net;
+    sac = (gain - risk) <= -2;
+    const mateMineAfter = B.mate != null && B.mate !== 0 && Math.sign(B.mate) === sgn && Math.abs(B.mate) <= 6;
+    const mateTheirsAfter = B.mate != null && B.mate !== 0 && Math.sign(B.mate) === -sgn;
+    loss = isBest ? 0 : Math.max(0, winBefore - winAfter);
+    const inaccCutoff = k < 6 ? 8 : 5;
+    if (isBest || loss <= 0.4) cls = 'best';
+    else if (loss < inaccCutoff) cls = 'good';
+    else if (loss < 10) cls = 'inaccuracy';
+    else if (loss < 20) cls = 'mistake';
+    else cls = 'blunder';
+    const original = cls;
+    if (CLS_RANK[cls] >= 2 && !mateTheirsAfter) {
+      if (winBefore >= 93 && winAfter >= 75) cls = capCls(cls, 'good');
+      if (mateMineAfter) cls = capCls(cls, 'good');
+      else if (winAfter >= 90) cls = capCls(cls, 'good');
+      else if (winAfter >= 80) cls = capCls(cls, 'inaccuracy');
+      if (sac && winAfter >= 60) cls = capCls(cls, 'inaccuracy');
+    }
+    tactical = cls !== original;
+    if ((cls === 'best' || cls === 'good') && sac && loss <= 1.5 && (mateMineAfter || winAfter >= 55) &&
+        winAfter >= winBefore - 3 && (winBefore <= 85 || mateMineAfter)) cls = 'brilliant';
+  }
+
+  const R = { cls, loss, winBefore, winAfter, isBest, sac, tactical, bestSan, bestMove, opening: allBook ? opening : null };
+  try {
+    R.comment = generateCommentary({
+      index: k, move: mv, color: mv.color, prev: p.prev, cls, loss, winBefore, winAfter, isBest, sac, tactical,
+      bestSan, bestMove, bestUci: A.best, opening: R.opening, evalBefore: A, evalAfter: B,
+      fenBefore: p.fenBefore, fenAfter: p.fenAfter, after,
+      isMate: after.in_checkmate(), isDraw: after.game_over() && !after.in_checkmate(), inCheck: after.in_check()
+    });
+  } catch (e) {
+    R.comment = mv.san + ' \u2014 ' + CLS[cls].label + '.';
+  }
+  return R;
+}
+
+function botResign(L) {
+  if (L.over || L.dead) return;
+  let ok = true;
+  try { ok = window.confirm('Resign this game?'); } catch (err) { ok = true; }
+  if (!ok) return;
+  clearTimeout(L.timer);
+  L.thinking = false;
+  L.over = { text: 'You resigned.', result: L.userColor === 'w' ? '0-1' : '1-0' };
+  render();
+}
+
+function botPgn(L) {
+  const you = state.username || 'You';
+  const botName = 'ChessLens Bot (' + L.bot.name + ')';
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const res = L.over ? L.over.result : '*';
+  const head = [
+    '[Event "ChessLens bot game"]', '[Site "ChessLens"]',
+    '[Date "' + d.getFullYear() + '.' + pad(d.getMonth() + 1) + '.' + pad(d.getDate()) + '"]',
+    '[White "' + (L.userColor === 'w' ? you : botName) + '"]',
+    '[Black "' + (L.userColor === 'b' ? you : botName) + '"]',
+    '[Result "' + res + '"]'
+  ];
+  let body = '';
+  L.moves.forEach((m, i) => {
+    if (i % 2 === 0) body += (Math.floor(i / 2) + 1) + '. ';
+    body += m.san + ' ';
+  });
+  return head.join('\n') + '\n\n' + body + res;
+}
+
+function botReview(L) {
+  if (!L.moves.length) return;
+  const pgn = botPgn(L);
+  killSession(L);
+  const color = L.userColor;
+  const r = loadGame(pgn, { myColor: color });
+  if (r.error) { state.lesson = null; render(); return; }
+  addToLibrary(pgn, state.game, { src: 'bot' });
+  openReport();
+}
+
+function botSummaryHtml(L) {
+  const ks = Object.keys(L.coach);
+  if (!ks.length) return '';
+  const counts = {};
+  let acc = 0;
+  ks.forEach((k) => {
+    const R = L.coach[k];
+    counts[R.cls] = (counts[R.cls] || 0) + 1;
+    acc += clamp(103.1668 * Math.exp(-0.04354 * (R.loss || 0)) - 3.1669, 0, 100);
+  });
+  const chips = CLS_ORDER.filter((c) => counts[c]).map((c) =>
+    '<span class="sum-chip"><i style="background:' + CLS[c].color + ';color:' + CLS[c].fg + '">' + esc(CLS[c].sym) + '</i>' + counts[c] + '</span>').join('');
+  return '<div class="fb coach"><div class="fb-head"><b>Your game</b><span class="muted">accuracy ' + Math.round(acc / ks.length) + '%</span></div>' +
+    '<div class="sum-chips">' + chips + '</div></div>';
+}
+
+/* =====================================================================
+   Learn / Play UI (inside the sheet)
+   ===================================================================== */
+function lineSan(def, vi) {
+  try {
+    const th = buildLesson(def, vi);
+    return sanLine(START_FEN, th.moves.map((m) => m.san));
+  } catch (e) { return ''; }
+}
+
+function openingDetailHtml(o) {
+  let h = '<div class="gl-head"><button class="btn ghost small" data-learn-back>\u2190 All openings</button></div>';
+  h += '<h3 class="od-title">' + esc(o.name) + ' <span class="gres lside">' + (o.side === 'w' ? 'White' : 'Black') + '</span></h3>';
+  h += '<p class="od-p"><b>The idea.</b> ' + esc(o.idea) + '</p>';
+  h += '<h4 class="od-h">Typical threats &amp; tricks</h4><ul class="od-list">' + o.threats.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+  h += '<h4 class="od-h">Lines</h4>';
+  for (let vi = 0; vi <= o.variants.length; vi++) {
+    const ln = lineOf(o, vi);
+    h += '<div class="od-line"><b>' + esc(vi === 0 ? 'Main line \u00B7 ' + ln.name : ln.name) + '</b><small>' + esc(vi === 0 ? 'The classic setup, move by move.' : ln.note) + '</small>' +
+      '<code>' + esc(lineSan(o, vi)) + '</code>' +
+      '<div class="row gap"><button class="btn ghost small grow" data-study="' + o.id + ':' + vi + '">Study</button>' +
+      '<button class="btn primary small grow" data-practice="' + o.id + ':' + vi + '">Practice</button></div></div>';
+  }
+  return h;
+}
+
 function renderLearnTab() {
-  const el = $('#learn-list');
-  if (!el) return;
-  el.innerHTML = LESSONS.map((l) =>
-    '<button class="game lesson-item" data-lesson="' + esc(l.id) + '">' +
-    '<span class="gcol ' + l.side + '"></span>' +
-    '<span class="gmain"><b>' + esc(l.name) + '</b><small>' + esc(l.blurb) + '</small></span>' +
-    '<span class="gres lside">' + (l.side === 'w' ? 'White' : 'Black') + '</span></button>'
+  const sub = state.learnSub;
+  document.querySelectorAll('[data-learnsub]').forEach((b) => {
+    const on = b.dataset.learnsub === sub;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  const so = $('#learn-openings');
+  const sl = $('#learn-lessons');
+  if (!so || !sl) return;
+  so.hidden = sub !== 'openings';
+  sl.hidden = sub !== 'lessons';
+  const det = state.learnOpening ? OPENINGS.find((o) => o.id === state.learnOpening) : null;
+  $('#learn-list').hidden = !!det;
+  $('#learn-detail').hidden = !det;
+  if (det) {
+    $('#learn-detail').innerHTML = openingDetailHtml(det);
+  } else {
+    $('#learn-list').innerHTML = OPENINGS.map((o) =>
+      '<button class="game lesson-item" data-opening="' + esc(o.id) + '">' +
+      '<span class="gcol ' + o.side + '"></span>' +
+      '<span class="gmain"><b>' + esc(o.name) + '</b><small>' + esc(o.blurb) + '</small></span>' +
+      '<span class="gres lside">' + (o.side === 'w' ? 'White' : 'Black') + '</span></button>'
+    ).join('');
+  }
+  const done = state.prefs.done || {};
+  $('#drill-list').innerHTML = DRILLS.map((d) =>
+    '<button class="game lesson-item" data-drill="' + esc(d.id) + '">' +
+    '<span class="gcol n"></span>' +
+    '<span class="gmain"><b>' + esc(d.name) + (done[d.id] ? ' <span class="chk-done">\u2713</span>' : '') + '</b><small>' + esc(d.blurb) + '</small></span>' +
+    '<span class="gres lside">' + d.steps.length + (d.steps.length === 1 ? ' step' : ' steps') + '</span></button>'
   ).join('');
+}
+
+function renderPlayTab() {
+  const c = $('#bot-colors');
+  const l = $('#bot-levels');
+  if (!c || !l) return;
+  c.innerHTML = [['w', 'White'], ['b', 'Black'], ['r', 'Random']].map((x) =>
+    '<button class="opt" data-bot-color="' + x[0] + '" aria-pressed="' + (state.prefs.botColor === x[0]) + '"><span>' + x[1] + '</span></button>').join('');
+  l.innerHTML = BOT_LEVELS.map((x) =>
+    '<button class="opt" data-bot-level="' + x.id + '" aria-pressed="' + (state.prefs.botLevel === x.id) + '"><span>' + esc(x.name) + '</span><small>' + esc(x.desc) + '</small></button>').join('');
+}
+
+/* ---------- card buttons ---------- */
+function cardAction(t) {
+  const L = state.lesson;
+  const is = (sel) => !!t.closest(sel);
+  if (is('[data-lesson-restart]')) { lessonGo(0); return; }
+  if (is('[data-open-lessons]')) { state.learnSub = 'lessons'; state.learnOpening = null; openSheet('learn'); return; }
+  if (is('[data-bot-new]')) { openSheet('play'); return; }
+  if (!L) return;
+  if (is('[data-study-practice]')) { startPractice(L.def.id, L.vi); return; }
+  if (is('[data-practice-hint]')) { L.hint = true; L.hints++; renderOverlay(); renderCard(); return; }
+  if (is('[data-practice-undo]')) { practiceUndo(L); return; }
+  if (is('[data-practice-show]')) { practiceShow(L); return; }
+  if (is('[data-practice-restart]')) { practiceRestart(L); return; }
+  if (is('[data-practice-study]')) { startLesson(L.def.id, L.vi); return; }
+  if (is('[data-drill-hint]')) { L.hint = true; renderOverlay(); renderCard(); return; }
+  if (is('[data-drill-next]')) { drillNext(); return; }
+  if (is('[data-drill-restart]')) { drillRestart(L); return; }
+  if (is('[data-bot-hint]')) {
+    L.hint = true;
+    sessionEval(L, L.fens[L.idx], quickLevel()).then(() => { if (state.lesson === L) { renderOverlay(); renderCard(); } });
+    renderOverlay();
+    return;
+  }
+  if (is('[data-bot-resign]')) { botResign(L); return; }
+  if (is('[data-bot-review]')) { botReview(L); }
 }
 
 /* ---------- cards + mode bar ---------- */
@@ -3160,6 +4290,17 @@ function exploreCardHtml() {
 
 function lessonCardHtml() {
   const L = state.lesson;
+  if (L.kind === 'practice') return practiceCardHtml(L);
+  if (L.kind === 'drill') return drillCardHtml(L);
+  if (L.kind === 'bot') return botCardHtml(L);
+  return studyCardHtml(L);
+}
+
+function progressBar(frac) {
+  return '<div class="bar lbar"><i style="width:' + Math.round(clamp(frac, 0, 1) * 100) + '%"></i></div>';
+}
+
+function studyCardHtml(L) {
   const def = L.def;
   const total = L.moves.length;
   const i = L.idx;
@@ -3167,26 +4308,140 @@ function lessonCardHtml() {
   let h = '';
   if (i === 0) {
     h += '<div class="card-head"><div class="badge-lg lesson">\u265E' + TEXT_VS + '</div><div class="card-title">' + esc(def.name) +
-      '<small style="color:var(--accent)">Learn \u00B7 you play ' + sideName + '</small></div></div>';
-    h += '<p class="card-text">' + esc(def.blurb) + ' Press <b>&gt;</b> to play through the main line, one move at a time (' + total + ' moves).</p>';
+      '<small style="color:var(--accent)">' + esc(L.vi ? L.line.name : 'Main line') + ' \u00B7 you play ' + sideName + '</small></div></div>';
+    h += '<p class="card-text"><b>The idea.</b> ' + esc(def.idea) + '</p>';
+    h += '<p class="tip" style="margin-top:8px"><b>Watch out for:</b> ' + esc(def.threats[0]) + '</p>';
+    h += '<p class="card-text" style="margin-top:8px">Press <b>&gt;</b> to play through the line one move at a time (' + total + ' moves).</p>';
   } else {
     const m = L.moves[i - 1];
     const num = Math.ceil(i / 2);
     const white = m.color === 'w';
     h += '<div class="card-head"><div class="badge-lg lesson">' + num + '</div><div class="card-title">' + esc(m.san) +
       '<small style="color:var(--muted)">Move ' + num + (white ? '' : '\u2026') + ' \u00B7 ' + (white ? 'White' : 'Black') + '</small></div></div>';
-    h += '<p class="card-text">' + esc((def.notes && def.notes[i - 1]) ||
+    h += '<p class="card-text">' + esc((L.notes && L.notes[i - 1]) ||
       describeMove({ move: m, prev: i > 1 ? L.moves[i - 2] : null, color: m.color })) + '</p>';
+    if (L.vi && L.prefix >= 0 && i - 1 === L.prefix) {
+      h += '<p class="note" style="color:#ffb02e">Variation starts here: ' + esc(L.line.name) + '.</p>';
+    }
     const nm = L.names[i];
     if (nm) {
       h += '<div class="hint"><span class="swatch" style="background:' + CLS.book.color + '"></span>Opening: <b style="color:#d2a679">' + esc(nm) + '</b></div>';
     }
   }
-  h += '<div class="bar lbar"><i style="width:' + Math.round((i / Math.max(1, total)) * 100) + '%"></i></div>';
+  h += progressBar(i / Math.max(1, total));
   if (i === total) {
-    h += '<p class="note" style="color:#d2a679">Line complete \u2014 from here the game branches into many plans. Replay it or try another opening.</p>' +
-      '<div class="row gap"><button class="btn ghost grow" data-lesson-restart>Replay</button>' +
-      '<button class="btn primary grow" data-open-learn>More openings</button></div>';
+    h += '<p class="note" style="color:#d2a679">Line complete \u2014 from here the game branches into many plans. Now try to play it yourself.</p>' +
+      '<div class="btnrow"><button class="btn primary" data-study-practice>Practice this line</button>' +
+      '<button class="btn ghost" data-lesson-restart>Replay</button></div>';
+  }
+  return h;
+}
+
+function practiceCardHtml(L) {
+  const total = L.th.moves.length;
+  const you = L.userColor === 'w' ? 'White' : 'Black';
+  const n = L.moves.length;
+  let h = '<div class="card-head"><div class="badge-lg lesson">\u265E' + TEXT_VS + '</div><div class="card-title">Practice: ' + esc(L.def.name) +
+    '<small style="color:var(--accent)">' + esc(L.vi ? L.th.line.name : 'Main line') + ' \u00B7 you play ' + you + '</small></div></div>';
+
+  if (n === 0) {
+    h += '<p class="card-text">Play the theory moves for ' + you + ' on the board. I check every move against this line and explain why if you leave it.</p>';
+  }
+  const fb = L.fb;
+  if (fb && fb.ok) {
+    h += '<div class="fb ok"><b>\u2713 ' + esc(fb.san) + '</b> \u2014 ' + (fb.shown ? 'the theory move.' : 'in theory!') +
+      (fb.name ? ' <span class="muted">(' + esc(fb.name) + ')</span>' : '') + (fb.note ? '<p>' + esc(fb.note) + '</p>' : '') + '</div>';
+  } else if (fb) {
+    h += '<div class="fb bad"><b>' + esc(fb.san) + '</b> \u2014 you left the line.';
+    h += '<p>' + (fb.book
+      ? 'It is also a known book move (' + esc(fb.book) + '), but it is not the line you are practicing.'
+      : 'It is not a known theory move in this position.') + '</p>';
+    if (fb.exp) h += '<p>The line continues with <b>' + esc(fb.exp) + '</b>' + (fb.expNote ? ': ' + esc(fb.expNote) : '.') + '</p>';
+    if (fb.eng) h += '<p class="muted">' + esc(fb.eng) + '</p>';
+    h += '</div>';
+  }
+  if (L.reply && L.status !== 'off') {
+    h += '<p class="card-text" style="margin-top:10px">Reply: <b>' + esc(L.reply.san) + '</b>' + (L.reply.note ? ' \u2014 ' + esc(L.reply.note) : '') + '</p>';
+  }
+  h += progressBar(n / Math.max(1, total));
+
+  if (L.status === 'done') {
+    h += '<p class="note" style="color:#d2a679">Line complete! Mistakes: ' + L.mistakes + ' \u00B7 hints: ' + L.hints + '.</p>' +
+      '<div class="btnrow"><button class="btn primary" data-practice-restart>Practice again</button>' +
+      '<button class="btn ghost" data-practice-study>Study the line</button></div>';
+  } else if (L.status === 'off') {
+    h += '<div class="btnrow"><button class="btn primary" data-practice-undo>Take back</button>' +
+      '<button class="btn ghost" data-practice-show>Show the line move</button></div>';
+  } else {
+    h += '<div class="btnrow"><button class="btn ghost" data-practice-hint>Hint</button>' +
+      (n > 0 ? '<button class="btn ghost" data-practice-undo>Take back</button>' : '') + '</div>';
+  }
+  return h;
+}
+
+function drillCardHtml(L) {
+  const def = L.def;
+  const total = def.steps.length;
+  if (L.finished) {
+    return '<div class="card-head"><div class="badge-lg lesson">\u2713</div><div class="card-title">' + esc(def.name) +
+      '<small style="color:var(--accent)">Lesson complete</small></div></div>' +
+      '<p class="card-text">You finished all ' + total + ' steps. ' + esc(def.goal) + '</p>' +
+      '<div class="btnrow"><button class="btn primary" data-open-lessons>More lessons</button>' +
+      '<button class="btn ghost" data-drill-restart>Replay</button></div>';
+  }
+  const st = def.steps[L.step];
+  const side = L.userColor === 'w' ? 'White' : 'Black';
+  let h = '<div class="card-head"><div class="badge-lg lesson">' + (L.step + 1) + '</div><div class="card-title">' + esc(st.name || ('Step ' + (L.step + 1))) +
+    '<small style="color:var(--muted)">' + esc(def.name) + ' \u00B7 step ' + (L.step + 1) + ' of ' + total + ' \u00B7 ' + side + ' to move</small></div></div>';
+  h += '<p class="card-text">' + esc(st.task) + '</p>';
+  if (L.step === 0 && !L.fb && L.moves.length === 0) h += '<p class="tip"><b>Goal.</b> ' + esc(def.goal) + '</p>';
+  if (L.fb) h += '<div class="fb ' + (L.fb.ok ? 'ok' : 'bad') + '">' + (L.fb.ok ? '<b>\u2713 </b>' : '') + esc(L.fb.text) + '</div>';
+  if (L.hint && !L.solved && st.hint) h += '<p class="note">Hint: ' + esc(st.hint) + '</p>';
+  h += progressBar((L.step + (L.solved ? 1 : 0)) / total);
+  if (L.solved) {
+    h += '<div class="btnrow"><button class="btn primary" data-drill-next>' + (L.step + 1 >= total ? 'Finish' : 'Next step') + '</button></div>';
+  } else {
+    h += '<div class="btnrow"><button class="btn ghost" data-drill-hint>Hint</button></div>';
+  }
+  return h;
+}
+
+function botCardHtml(L) {
+  const you = L.userColor === 'w' ? 'White' : 'Black';
+  const a = L.evals[L.fens[L.idx]] || null;
+  let h = '<div class="card-head"><div class="badge-lg bot">\u265F' + TEXT_VS + '</div><div class="card-title">vs Bot \u00B7 ' + esc(L.bot.name) +
+    '<small style="color:var(--muted)">You play ' + you + ' \u00B7 coach on</small></div>' +
+    (a ? '<div class="chip-eval' + (a.cp < 0 ? ' neg' : '') + '">' + esc(fmtEval(a)) + '</div>' : '') + '</div>';
+
+  if (L.error) {
+    h += '<p class="note">The engine could not be loaded, so the bot cannot play. It downloads once (internet needed) and is then cached for offline use.</p>';
+  } else if (L.over) {
+    h += '<p class="card-text"><b>' + esc(L.over.text) + '</b></p>';
+  } else if (L.thinking) {
+    h += '<p class="card-text"><span class="spin"></span>Bot is thinking\u2026</p>';
+  } else {
+    h += '<p class="card-text">' + (L.moves.length ? 'Your move.' : 'Make the first move.') + '</p>';
+  }
+
+  const k = L.lastCoach;
+  if (k != null && L.coach[k]) {
+    const R = L.coach[k];
+    const cl = CLS[R.cls];
+    h += '<div class="fb coach"><div class="fb-head"><i style="background:' + cl.color + ';color:' + cl.fg + '">' + esc(cl.sym) + '</i><b>' +
+      esc(L.moves[k].san) + '</b><span style="color:' + cl.color + '">' + cl.label + '</span></div><p>' + esc(R.comment) + '</p></div>';
+  }
+  if (L.coachBusy > 0) h += '<p class="note" style="color:var(--muted)"><span class="spin"></span>Coach is checking your move\u2026</p>';
+
+  if (L.over) {
+    h += botSummaryHtml(L);
+    h += '<div class="btnrow">' + (L.moves.length ? '<button class="btn primary" data-bot-review>Review game</button>' : '') +
+      '<button class="btn ghost" data-bot-new>New game</button></div>';
+  } else {
+    h += '<div class="btnrow"><button class="btn ghost" data-bot-hint>Hint</button><button class="btn ghost" data-bot-resign>Resign</button></div>';
+  }
+  if (L.moves.length) {
+    const s = Math.max(0, L.moves.length - 8);
+    h += '<p class="tip">' + (s > 0 ? '\u2026 ' : '') + esc(sanLine(L.fens[s], L.moves.slice(s).map((m) => m.san))) + '</p>';
   }
   return h;
 }
@@ -3201,12 +4456,22 @@ function renderModeBar() {
   bar.hidden = !(L || ex);
   if (!L && !ex) return;
   bar.classList.toggle('lesson', !!L);
-  $('#mode-badge').textContent = L ? 'Learn' : 'What if';
-  $('#mode-line').textContent = L
-    ? L.def.name + ' \u00B7 ' + L.idx + '/' + L.moves.length
-    : (ex.moves.length ? sanLine(ex.fens[0], ex.moves.map((m) => m.san)) : 'Exploring a different line');
+  let badge = 'What if';
+  let line = '';
+  if (L) {
+    if (L.kind === 'study') { badge = 'Learn'; line = L.def.name + ' \u00B7 ' + L.idx + '/' + L.moves.length; }
+    else if (L.kind === 'practice') { badge = 'Practice'; line = L.def.name + ' \u00B7 ' + (L.vi ? L.th.line.name : 'Main line'); }
+    else if (L.kind === 'drill') { badge = 'Lesson'; line = L.def.name + (L.finished ? '' : ' \u00B7 step ' + (L.step + 1) + '/' + L.def.steps.length); }
+    else { badge = 'Play'; line = 'vs Bot \u00B7 ' + L.bot.name; }
+  } else {
+    line = ex.moves.length ? sanLine(ex.fens[0], ex.moves.map((m) => m.san)) : 'Exploring a different line';
+  }
+  $('#mode-badge').textContent = badge;
+  $('#mode-line').textContent = line;
   $('#btn-back-game').hidden = !!L;
-  $('#btn-close-lesson').hidden = !L;
+  const cb = $('#btn-close-lesson');
+  cb.hidden = !L;
+  cb.textContent = (L && L.kind === 'bot' && !L.over) ? 'Leave game' : 'Close';
 }
 
 async function waitForChess() {
@@ -3235,13 +4500,30 @@ function wireEvents() {
     if (e.target.closest('[data-open-import]')) openSheet('import');
     else if (e.target.closest('[data-open-learn]')) openSheet('learn');
     else if (e.target.closest('[data-back-game]')) exitExplore();
-    else if (e.target.closest('[data-lesson-restart]')) lessonGo(0);
+    else cardAction(e.target);
   });
   $('#btn-back-game').addEventListener('click', exitExplore);
   $('#btn-close-lesson').addEventListener('click', closeLesson);
-  $('#learn-list').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-lesson]');
-    if (b) startLesson(b.dataset.lesson);
+  $('#tab-learn').addEventListener('click', (e) => {
+    const t = e.target;
+    const sub = t.closest('[data-learnsub]');
+    if (sub) { state.learnSub = sub.dataset.learnsub; renderLearnTab(); return; }
+    const op = t.closest('[data-opening]');
+    if (op) { state.learnOpening = op.dataset.opening; renderLearnTab(); return; }
+    if (t.closest('[data-learn-back]')) { state.learnOpening = null; renderLearnTab(); return; }
+    const st = t.closest('[data-study]');
+    if (st) { const p = st.dataset.study.split(':'); startLesson(p[0], +p[1]); return; }
+    const pr = t.closest('[data-practice]');
+    if (pr) { const p = pr.dataset.practice.split(':'); startPractice(p[0], +p[1]); return; }
+    const dr = t.closest('[data-drill]');
+    if (dr) startDrill(dr.dataset.drill);
+  });
+  $('#tab-play').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-bot-color]');
+    if (c) { state.prefs.botColor = c.dataset.botColor; savePrefs(); renderPlayTab(); return; }
+    const l = e.target.closest('[data-bot-level]');
+    if (l) { state.prefs.botLevel = l.dataset.botLevel; savePrefs(); renderPlayTab(); return; }
+    if (e.target.closest('#btn-start-bot')) startBot();
   });
 
   /* What-if: tap-tap or drag a piece on the board */
@@ -3396,7 +4678,7 @@ async function boot() {
     return;
   }
 
-  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V8) || lsGet(LEGACY_PGN_V7) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
+  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V9) || lsGet(LEGACY_PGN_V8) || lsGet(LEGACY_PGN_V7) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
   let restored = false;
   if (saved) restored = !!loadGame(saved, {}).ok;
   cleanupLegacyStorage();
