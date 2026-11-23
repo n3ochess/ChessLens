@@ -1,7 +1,7 @@
 /* ChessLens service worker — app shell + CDN assets cached for offline use */
 'use strict';
 
-const VERSION = 'v9';
+const VERSION = 'v10';
 const SHELL_CACHE = 'chesslens-shell-' + VERSION;
 const CDN_CACHE = 'chesslens-cdn-' + VERSION; // must match CDN_CACHE in app.js
 
@@ -60,7 +60,7 @@ self.addEventListener('activate', (event) => {
         }
       }
     } catch (err) { /* best effort */ }
-    /* then drop every older chesslens-* cache (v8 and earlier) */
+    /* then drop every older chesslens-* cache (v9 and earlier) */
     await Promise.all(names.filter((n) => n.startsWith('chesslens-') && !keep.includes(n)).map((n) => caches.delete(n)));
     await self.clients.claim();
   })());
