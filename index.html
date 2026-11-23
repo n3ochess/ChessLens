@@ -10,7 +10,7 @@
 /* Apply saved appearance before first paint (avoids a flash of the default theme) */
 (function () {
   try {
-    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v9') || localStorage.getItem('chesslens.prefs.v8') || localStorage.getItem('chesslens.prefs.v7') || localStorage.getItem('chesslens.prefs.v6') || '{}');
+    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v10') || localStorage.getItem('chesslens.prefs.v9') || localStorage.getItem('chesslens.prefs.v8') || localStorage.getItem('chesslens.prefs.v7') || localStorage.getItem('chesslens.prefs.v6') || '{}');
     var r = document.documentElement;
     if (p && /^[a-z]{2,20}$/.test(p.board)) r.setAttribute('data-board', p.board);
     if (p && /^[a-z]{2,20}$/.test(p.pieces)) r.setAttribute('data-pieces', p.pieces);
@@ -113,6 +113,7 @@
       <button class="tab active" role="tab" data-tab="import" aria-selected="true">Import</button>
       <button class="tab" role="tab" data-tab="games" aria-selected="false">Games</button>
       <button class="tab" role="tab" data-tab="learn" aria-selected="false">Learn</button>
+      <button class="tab" role="tab" data-tab="play" aria-selected="false">Play</button>
     </div>
 
     <section id="tab-import" class="tabpane">
@@ -158,9 +159,31 @@
     </section>
 
     <section id="tab-learn" class="tabpane" hidden>
-      <p class="set-help">Step through the main ideas of essential openings, one move at a time, right on the board.</p>
-      <div id="learn-list" class="glist"></div>
-      <p class="set-empty">More openings and practice bots are planned for a future update.</p>
+      <div class="seg" role="tablist">
+        <button class="seg-btn active" role="tab" data-learnsub="openings" aria-selected="true">Openings</button>
+        <button class="seg-btn" role="tab" data-learnsub="lessons" aria-selected="false">Lessons</button>
+      </div>
+
+      <div id="learn-openings">
+        <p class="set-help">Pick an opening to see its idea and typical threats, then study the lines move by move or practice them on the board.</p>
+        <div id="learn-list" class="glist"></div>
+        <div id="learn-detail" hidden></div>
+      </div>
+
+      <div id="learn-lessons" hidden>
+        <p class="set-help">Short interactive lessons: make the move on the board and get instant feedback.</p>
+        <div id="drill-list" class="glist"></div>
+      </div>
+    </section>
+
+    <section id="tab-play" class="tabpane" hidden>
+      <p class="set-help">Play a game against a local bot. The engine coaches you after every move: it rates your move and tells you what was better.</p>
+      <label class="lbl">Your color</label>
+      <div id="bot-colors" class="opts"></div>
+      <label class="lbl">Bot level</label>
+      <div id="bot-levels" class="opts"></div>
+      <button id="btn-start-bot" class="btn primary wide">Start game</button>
+      <p class="set-help">The bot runs on your device. Levels are approximate. The engine downloads once (internet needed) and is then cached for offline play.</p>
     </section>
   </div>
 </div>
