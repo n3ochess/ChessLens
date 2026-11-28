@@ -10,7 +10,7 @@
 /* Apply saved appearance before first paint (avoids a flash of the default theme) */
 (function () {
   try {
-    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v10') || localStorage.getItem('chesslens.prefs.v9') || localStorage.getItem('chesslens.prefs.v8') || localStorage.getItem('chesslens.prefs.v7') || localStorage.getItem('chesslens.prefs.v6') || '{}');
+    var p = JSON.parse(localStorage.getItem('chesslens.prefs.v12') || localStorage.getItem('chesslens.prefs.v11') || localStorage.getItem('chesslens.prefs.v10') || localStorage.getItem('chesslens.prefs.v9') || localStorage.getItem('chesslens.prefs.v8') || localStorage.getItem('chesslens.prefs.v7') || localStorage.getItem('chesslens.prefs.v6') || '{}');
     var r = document.documentElement;
     if (p && /^[a-z]{2,20}$/.test(p.board)) r.setAttribute('data-board', p.board);
     if (p && /^[a-z]{2,20}$/.test(p.pieces)) r.setAttribute('data-pieces', p.pieces);
@@ -165,8 +165,9 @@
       </div>
 
       <div id="learn-openings">
-        <p class="set-help">Pick an opening to see its idea and typical threats, then study the lines move by move or practice them on the board.</p>
-        <div id="learn-list" class="glist"></div>
+        <p id="learn-intro" class="set-help">Pick an opening by color: study it with commentary and arrows (stage 1), then practice the line on the board (stage 2).</p>
+        <div id="learn-filter" class="pills" role="tablist" aria-label="Filter by color"></div>
+        <div id="learn-list" class="olist"></div>
         <div id="learn-detail" hidden></div>
       </div>
 
