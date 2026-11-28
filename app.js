@@ -22,12 +22,22 @@ const LOW_END = (function () {
 /* Max number of plies (half-moves) that can be labelled "Book". Tweak freely (e.g. 8–16). */
 const BOOK_MAX_PLIES = 12;
 
-/* localStorage keys (v10) + legacy keys migrated/cleaned on boot */
-const LS_PROFILES = 'chesslens.profiles.v10';
-const LS_PREFS = 'chesslens.prefs.v10';
-const LS_PGN = 'chesslens.lastpgn.v10';
-const LS_CACHE = 'chesslens.cache.v10';
-const LS_LIB = 'chesslens.library.v10';
+/* localStorage keys (v12) + legacy keys migrated/cleaned on boot */
+const LS_PROFILES = 'chesslens.profiles.v12';
+const LS_PREFS = 'chesslens.prefs.v12';
+const LS_PGN = 'chesslens.lastpgn.v12';
+const LS_CACHE = 'chesslens.cache.v12';
+const LS_LIB = 'chesslens.library.v12';
+const LEGACY_PROFILES_V11 = 'chesslens.profiles.v11';
+const LEGACY_PREFS_V11 = 'chesslens.prefs.v11';
+const LEGACY_PGN_V11 = 'chesslens.lastpgn.v11';
+const LEGACY_CACHE_V11 = 'chesslens.cache.v11';
+const LEGACY_LIB_V11 = 'chesslens.library.v11';
+const LEGACY_PROFILES_V10 = 'chesslens.profiles.v10';
+const LEGACY_PREFS_V10 = 'chesslens.prefs.v10';
+const LEGACY_PGN_V10 = 'chesslens.lastpgn.v10';
+const LEGACY_CACHE_V10 = 'chesslens.cache.v10';
+const LEGACY_LIB_V10 = 'chesslens.library.v10';
 const LEGACY_PROFILES_V9 = 'chesslens.profiles.v9';
 const LEGACY_PREFS_V9 = 'chesslens.prefs.v9';
 const LEGACY_PGN_V9 = 'chesslens.lastpgn.v9';
@@ -49,7 +59,7 @@ const LEGACY_PGN_V6 = 'chesslens.lastpgn.v6';
 const LEGACY_PGN = 'chesslens.lastpgn';
 const LEGACY_CACHE_V6 = 'chesslens.cache.v6';
 const LEGACY_CACHE = 'chesslens.cache.v5';
-const CDN_CACHE = 'chesslens-cdn-v10'; // must match sw.js
+const CDN_CACHE = 'chesslens-cdn-v12'; // must match sw.js
 const MAX_CACHED_GAMES = 10;
 const MAX_PROFILES = 20;
 const MAX_LIBRARY = 30;
@@ -313,8 +323,9 @@ function computeBook(fens, nMoves) {
 
 /* =====================================================================
    Openings (Learn > Openings): idea, typical threats and several lines.
-   Variant notes ('n') are keyed by 0-based ply and only needed after the
-   line leaves the main line; earlier plies reuse the main-line notes.
+   side = the color you normally play; sides = colors you can practice (['b'] = Black only).
+   Annotations 'ext' are keyed by 0-based ply: a = arrows [from,to,kind], m = marks [square,kind],
+   t = threats, w = why. Variant data is only needed after the line leaves the main line.
    ===================================================================== */
 const OPENINGS = [
  {
@@ -358,6 +369,86 @@ const OPENINGS = [
      "11": "Black grabs a second pawn.",
      "12": "White is a pawn down but far ahead in development. That is the whole point of the gambit.",
      "13": "Black develops and prepares to defend. The position is sharp and rich in tactics."
+    },
+    "ext": {
+     "6": {
+      "a": [
+       [
+        "b4",
+        "c5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "c5",
+        "target"
+       ]
+      ],
+      "t": "The b-pawn attacks the bishop on c5. If it takes, White gets time for c3 and d4.",
+      "w": "The gambit idea: give a pawn to gain tempi and build a big center."
+     },
+     "8": {
+      "a": [
+       [
+        "c3",
+        "b4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "b4",
+        "target"
+       ]
+      ],
+      "t": "The c3 pawn attacks the bishop, and d4 is coming.",
+      "w": "Why c3: it hits the bishop and prepares the central pawn duo."
+     },
+     "9": {
+      "a": [
+       [
+        "a5",
+        "c3",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "c3",
+        "target"
+       ]
+      ],
+      "t": "The bishop pressures c3 and, behind it, the e1-king diagonal.",
+      "w": "Why ...Ba5: it keeps the bishop alive and keeps annoying White's center."
+     },
+     "10": {
+      "a": [
+       [
+        "d4",
+        "e5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e5",
+        "target"
+       ]
+      ],
+      "t": "d4 attacks the e5 pawn and opens the center for White's pieces.",
+      "w": "The point of the whole gambit: a central pawn mass and rapid development."
+     },
+     "12": {
+      "m": [
+       [
+        "g1",
+        "key"
+       ]
+      ],
+      "t": "White is a pawn down but far ahead in development. Black must be careful with the king.",
+      "w": "Why castle: development first; the open lines are worth the pawn."
+     }
     }
    },
    {
@@ -375,9 +466,340 @@ const OPENINGS = [
      "12": "White grabs a pawn.",
      "13": "Black recaptures and hits the bishop again.",
      "14": "The bishop retreats. White has an extra pawn, Black has activity and development in return."
+    },
+    "ext": {
+     "5": {
+      "a": [
+       [
+        "f6",
+        "e4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e4",
+        "target"
+       ]
+      ],
+      "t": "Black counterattacks e4 instead of copying the bishop move.",
+      "w": "The Two Knights Defense is more combative than ...Bc5."
+     },
+     "6": {
+      "a": [
+       [
+        "g5",
+        "f7",
+        "threat"
+       ],
+       [
+        "c4",
+        "f7",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "f7",
+        "target"
+       ]
+      ],
+      "t": "Knight and bishop both attack f7, defended only by the king.",
+      "w": "Why Ng5: it is the most direct way to exploit f7, but it costs White a pawn if Black replies well."
+     },
+     "7": {
+      "a": [
+       [
+        "d5",
+        "c4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "c4",
+        "target"
+       ]
+      ],
+      "t": "The d5 pawn attacks the bishop and blocks the diagonal to f7.",
+      "w": "Why ...d5: it is the main answer: it strikes in the center and blocks the bishop's diagonal."
+     },
+     "9": {
+      "a": [
+       [
+        "a5",
+        "c4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "c4",
+        "target"
+       ]
+      ],
+      "t": "The knight attacks the bishop on c4.",
+      "w": "Why ...Na5: it kicks the bishop; the d5 pawn can be won back later."
+     },
+     "10": {
+      "a": [
+       [
+        "b5",
+        "e8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "e8",
+        "target"
+       ]
+      ],
+      "t": "Check! The bishop attacks the king on e8, so Black must answer it.",
+      "w": "The bishop retreats with tempo."
+     },
+     "11": {
+      "a": [
+       [
+        "c6",
+        "b5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "b5",
+        "target"
+       ]
+      ],
+      "t": "The c6 pawn blocks the check and attacks the bishop.",
+      "w": "Why ...c6: it blocks with tempo."
+     }
     }
    }
-  ]
+  ],
+  "tagline": "Quick development and pressure on f7",
+  "level": "Beginner",
+  "style": "Open \u00b7 Attacking",
+  "ext": {
+   "0": {
+    "a": [
+     [
+      "e4",
+      "d5",
+      "idea"
+     ],
+     [
+      "e4",
+      "f5",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "d5",
+      "key"
+     ],
+     [
+      "f5",
+      "key"
+     ]
+    ],
+    "t": "Nothing is threatened yet, but the pawn already controls d5 and f5.",
+    "w": "1.e4 fights for the center and frees both the queen and the f1-bishop."
+   },
+   "1": {
+    "a": [
+     [
+      "e5",
+      "d4",
+      "idea"
+     ],
+     [
+      "e5",
+      "f4",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "key"
+     ],
+     [
+      "f4",
+      "key"
+     ]
+    ],
+    "w": "The symmetrical answer: Black takes the same central squares and opens lines for the queen and the f8-bishop."
+   },
+   "2": {
+    "a": [
+     [
+      "f3",
+      "e5",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "target"
+     ]
+    ],
+    "t": "The e5 pawn is attacked and has no defender yet: Nxe5 would win a pawn.",
+    "w": "Black has to defend e5 right now, so White gains a developing tempo."
+   },
+   "3": {
+    "a": [
+     [
+      "c6",
+      "e5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "defend"
+     ]
+    ],
+    "w": "...Nc6 defends e5 and develops. Alternatives: ...d6 is passive, ...Nf6 leads to the Petroff."
+   },
+   "4": {
+    "a": [
+     [
+      "c4",
+      "f7",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "f7",
+      "target"
+     ]
+    ],
+    "t": "The bishop eyes f7, which only the king defends. A later Ng5 would double the attack on it.",
+    "w": "Why Bc4: the bishop is most active on this diagonal, before Black can kick it with ...d5."
+   },
+   "5": {
+    "a": [
+     [
+      "c5",
+      "f2",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "f2",
+      "target"
+     ]
+    ],
+    "t": "Black mirrors the idea: the bishop eyes f2, also guarded only by the king.",
+    "w": "Why ...Bc5: it develops, fights for the center (...d5 is coming) and avoids passive defense of f7."
+   },
+   "6": {
+    "a": [
+     [
+      "c3",
+      "d4",
+      "plan"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "key"
+     ]
+    ],
+    "t": "Next comes d4, hitting the bishop on c5 and the e5 pawn at once.",
+    "w": "Why c3: it prepares a big pawn center and gives the c4-bishop a retreat square on b3."
+   },
+   "7": {
+    "a": [
+     [
+      "f6",
+      "e4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "The e4 pawn is attacked: ...Nxe4 would grab it.",
+    "w": "Why ...Nf6: it develops with tempo and forces White to deal with e4."
+   },
+   "8": {
+    "a": [
+     [
+      "d3",
+      "e4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "defend"
+     ]
+    ],
+    "w": "Why d3: it defends e4 calmly, keeps the position closed and avoids the sharp ...d5 break."
+   },
+   "9": {
+    "a": [
+     [
+      "d6",
+      "e5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "defend"
+     ]
+    ],
+    "w": "Why ...d6: it supports e5 and opens the c8-bishop."
+   },
+   "10": {
+    "m": [
+     [
+      "g1",
+      "key"
+     ],
+     [
+      "f1",
+      "key"
+     ]
+    ],
+    "t": "No direct threat: White just removes the king from f1-g1 tricks and connects the rooks.",
+    "w": "Castling early keeps the king safe before the center opens."
+   },
+   "11": {
+    "m": [
+     [
+      "g8",
+      "key"
+     ],
+     [
+      "f8",
+      "key"
+     ]
+    ],
+    "t": "Both kings are safe. The fight now is about the center: d4 for White, ...d5 for Black.",
+    "w": "From here the usual plans are Re1, Nbd2-f1-g3 and a later d4 or b4."
+   }
+  },
+  "sides": [
+   "w",
+   "b"
+  ],
+  "nameFrom": 2
  },
  {
   "id": "ruy",
@@ -425,6 +847,85 @@ const OPENINGS = [
      "11": "Black takes the pawn.",
      "12": "White recaptures. The plan is to trade pieces and win the endgame with the healthier kingside majority.",
      "13": "Black kicks the knight and activates the bishops."
+    },
+    "ext": {
+     "6": {
+      "m": [
+       [
+        "c6",
+        "target"
+       ]
+      ],
+      "t": "White trades the bishop for the knight, damaging Black's pawn structure.",
+      "w": "The Exchange Variation: White gives up the bishop pair for a long-term structural edge."
+     },
+     "8": {
+      "a": [
+       [
+        "f3",
+        "e5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e5",
+        "target"
+       ]
+      ],
+      "t": "e5 looks loose, but ...Qd4 would fork the knight and the e4 pawn, so the pawn is indirectly protected.",
+      "w": "Why castle: White finishes development first and keeps the endgame plan."
+     },
+     "9": {
+      "a": [
+       [
+        "f6",
+        "e5",
+        "defend"
+       ]
+      ],
+      "m": [
+       [
+        "e5",
+        "defend"
+       ]
+      ],
+      "w": "Why ...f6: it protects e5 without any piece, at the cost of weakening the king."
+     },
+     "10": {
+      "a": [
+       [
+        "d4",
+        "e5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e5",
+        "target"
+       ]
+      ],
+      "t": "d4 attacks e5 and opens the center.",
+      "w": "Why d4: White wants open lines, so the bishop pair cannot be used well."
+     },
+     "13": {
+      "a": [
+       [
+        "c5",
+        "d4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "target"
+       ]
+      ],
+      "t": "The pawn attacks the knight on d4.",
+      "w": "Why ...c5: Black kicks the knight and gains space."
+     }
     }
    },
    {
@@ -443,75 +944,349 @@ const OPENINGS = [
      "13": "The knight steps away.",
      "14": "White trades queens, heading for the famous Berlin endgame.",
      "15": "Black's king is stuck in the center but very safe. The structure is rock-solid, the \"Berlin Wall\"."
+    },
+    "ext": {
+     "5": {
+      "a": [
+       [
+        "f6",
+        "e4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e4",
+        "target"
+       ]
+      ],
+      "t": "Black counterattacks e4 instead of defending e5 directly.",
+      "w": "The Berlin Defense is extremely solid and hard for White to crack."
+     },
+     "7": {
+      "m": [
+       [
+        "e4",
+        "target"
+       ]
+      ],
+      "t": "Black takes the e4 pawn. White will regain material with d4 and tactics on the e-file.",
+      "w": "The pawn can be taken because of the tactical idea ...Nd6."
+     },
+     "8": {
+      "a": [
+       [
+        "d4",
+        "e5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e5",
+        "target"
+       ]
+      ],
+      "t": "d4 attacks e5 and opens the center.",
+      "w": "Why d4: White fights for the center and opens lines at once."
+     },
+     "9": {
+      "a": [
+       [
+        "d6",
+        "b5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "b5",
+        "target"
+       ]
+      ],
+      "t": "The knight retreats and attacks the bishop on b5.",
+      "w": "Why ...Nd6: it saves the knight with tempo."
+     },
+     "12": {
+      "a": [
+       [
+        "e5",
+        "d6",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d6",
+        "target"
+       ]
+      ],
+      "t": "The pawn attacks the knight on d6.",
+      "w": "Why dxe5: White regains the pawn with tempo."
+     },
+     "14": {
+      "a": [
+       [
+        "d8",
+        "e8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "e8",
+        "target"
+       ]
+      ],
+      "t": "Check! Black has to recapture with the king.",
+      "w": "Why Qxd8+: it leads to the famous endgame where White has a better structure but Black is very solid."
+     }
     }
    }
-  ]
- },
- {
-  "id": "caro",
-  "name": "Caro-Kann Defense",
-  "side": "b",
-  "blurb": "A rock-solid answer to 1.e4 that keeps a healthy pawn structure and a free light-squared bishop.",
-  "moves": "e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7",
-  "notes": [
-   "White takes the center with the king's pawn.",
-   "The Caro-Kann: Black prepares ...d5 with a pawn on c6, so the c8-bishop is not locked in (unlike the French).",
-   "White builds a big pawn center.",
-   "Black challenges the e4 pawn right away.",
-   "White defends e4 with a knight.",
-   "Black trades the center pawn and opens the position.",
-   "White recaptures and leads in development.",
-   "The key Caro-Kann idea: bring the bishop out before closing the pawn chain with ...e6.",
-   "The knight attacks the bishop with tempo.",
-   "The bishop stays active on the diagonal and is safe behind the pawn chain.",
-   "White threatens h5 to harass the bishop.",
-   "Black stops Ng5 and prepares a retreat square on h7.",
-   "White develops the last minor piece toward the center.",
-   "Black develops and supports ...Ngf6. The structure is healthy and there are no weaknesses to attack."
   ],
-  "idea": "Black prepares ...d5 with a solid pawn on c6, keeping a healthy structure and a free light-squared bishop. The goal is safety first and counterplay later.",
-  "threats": [
-   "After exd5 cxd5, White's Qb3 hits d5 and b7 at the same time.",
-   "In the Classical line, h4\u2013h5 harasses the bishop, so Black must keep it safe on g6 or h7.",
-   "Do not lock the bishop in with ...e6 before developing it: that is the typical French problem.",
-   "In the Advance Variation Black attacks the base of the chain with ...c5 and ...Qb6."
-  ],
-  "variants": [
-   {
-    "name": "Advance Variation",
-    "note": "White gains space with e5; Black hits the pawn chain.",
-    "moves": "e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2 c5 Be3 Nc6 O-O Qb6",
-    "n": {
-     "4": "The Advance Variation: White gains space and fixes the pawn chain.",
-     "5": "Black develops the bishop BEFORE playing ...e6. That is the Caro-Kann trump.",
-     "6": "White develops the knight.",
-     "7": "Now the bishop is outside the pawn chain and safe.",
-     "8": "White prepares to castle.",
-     "9": "Black attacks the base of White's pawn chain, d4.",
-     "10": "White defends d4.",
-     "11": "Black adds more pressure on d4.",
-     "12": "White castles.",
-     "13": "Black pressures d4 and b2. The play is balanced and typical for this line."
-    }
+  "tagline": "Long-term pressure on the e5 pawn",
+  "level": "Intermediate",
+  "style": "Strategic",
+  "ext": {
+   "2": {
+    "a": [
+     [
+      "f3",
+      "e5",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "target"
+     ]
+    ],
+    "t": "The knight attacks the e5 pawn.",
+    "w": "Same opening idea as the Italian: attack e5 while developing."
    },
-   {
-    "name": "Exchange Variation",
-    "note": "White simplifies into a symmetrical structure.",
-    "moves": "e4 c6 d4 d5 exd5 cxd5 Bd3 Nc6 c3 Nf6 Bf4 Bg4 Qb3 Qd7",
-    "n": {
-     "4": "The Exchange Variation: White simplifies and gets a symmetrical pawn structure.",
-     "5": "Black recaptures and the c-file opens.",
-     "6": "White develops and eyes the kingside.",
-     "7": "Black develops the knight.",
-     "8": "White solidifies the d4 pawn.",
-     "9": "Black develops and adds pressure on d5.",
-     "10": "White develops the bishop outside the pawn chain.",
-     "11": "Black does the same idea and pins the f3 knight.",
-     "12": "White hits d5 and b7 at once.",
-     "13": "Black protects b7 and keeps everything together."
-    }
+   "3": {
+    "a": [
+     [
+      "c6",
+      "e5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "defend"
+     ]
+    ],
+    "w": "...Nc6 defends e5. This knight is the target of White's next move."
+   },
+   "4": {
+    "a": [
+     [
+      "b5",
+      "c6",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "c6",
+      "target"
+     ],
+     [
+      "e5",
+      "key"
+     ]
+    ],
+    "t": "The bishop attacks the knight that defends e5. If Bxc6 dxc6 Nxe5, ...Qd4 forks the knight and e4, so Black regains the pawn.",
+    "w": "The Ruy Lopez: a long-term pressure move, not an immediate win of material."
+   },
+   "5": {
+    "a": [
+     [
+      "a6",
+      "b5",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "b5",
+      "target"
+     ]
+    ],
+    "t": "The a6 pawn attacks the bishop and asks it what it wants to do.",
+    "w": "The Morphy Defense: Black questions the bishop at once."
+   },
+   "6": {
+    "a": [
+     [
+      "a4",
+      "c6",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "c6",
+      "target"
+     ]
+    ],
+    "t": "The pin pressure on c6 stays; Black's knight is still tied to e5.",
+    "w": "Why Ba4: White keeps the tension instead of trading on c6."
+   },
+   "7": {
+    "a": [
+     [
+      "f6",
+      "e4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "The knight attacks e4.",
+    "w": "Why ...Nf6: development with a threat, a very natural move."
+   },
+   "8": {
+    "m": [
+     [
+      "g1",
+      "key"
+     ],
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "White lets e4 hang on purpose: after ...Nxe4, d4 and Re1 give White a strong initiative.",
+    "w": "Why castle instead of defending e4: it is the main line and keeps the position flexible."
+   },
+   "9": {
+    "m": [
+     [
+      "e7",
+      "key"
+     ],
+     [
+      "e5",
+      "defend"
+     ]
+    ],
+    "t": "Black avoids the Open lines and prepares to castle.",
+    "w": "Why ...Be7: it defends e5 indirectly and takes the sting out of Re1 ideas."
+   },
+   "10": {
+    "a": [
+     [
+      "e1",
+      "e4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "defend"
+     ]
+    ],
+    "w": "Why Re1: it defends e4, so the bishop can retreat without losing the pawn."
+   },
+   "11": {
+    "a": [
+     [
+      "b5",
+      "a4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "a4",
+      "target"
+     ]
+    ],
+    "t": "The pawn attacks the bishop again.",
+    "w": "Why ...b5: Black gains space on the queenside."
+   },
+   "12": {
+    "a": [
+     [
+      "b3",
+      "f7",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "f7",
+      "target"
+     ]
+    ],
+    "t": "The bishop aims at f7 along the long diagonal.",
+    "w": "Why Bb3: it is the bishop's best diagonal."
+   },
+   "13": {
+    "a": [
+     [
+      "d6",
+      "e5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "defend"
+     ]
+    ],
+    "w": "Why ...d6: it supports e5 solidly and frees the c8-bishop."
+   },
+   "14": {
+    "a": [
+     [
+      "c3",
+      "d4",
+      "plan"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "key"
+     ]
+    ],
+    "t": "The plan is d4, opening the center when White's pieces are ready.",
+    "w": "Why c3: it prepares d4 and gives the bishop the c2 retreat."
+   },
+   "16": {
+    "a": [
+     [
+      "h3",
+      "g4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "g4",
+      "defend"
+     ]
+    ],
+    "t": "h3 stops ...Bg4, which would pin the f3-knight.",
+    "w": "A typical waiting move in the Closed Ruy Lopez: it improves the position without committing."
    }
-  ]
+  },
+  "sides": [
+   "w",
+   "b"
+  ],
+  "nameFrom": 2
  },
  {
   "id": "fourknights",
@@ -560,15 +1335,1919 @@ const OPENINGS = [
      "13": "Black grabs the center.",
      "14": "White takes the pawn.",
      "15": "Black recaptures. The position is open and balanced, with active pieces on both sides."
+    },
+    "ext": {
+     "6": {
+      "a": [
+       [
+        "d4",
+        "e5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e5",
+        "target"
+       ]
+      ],
+      "t": "d4 attacks the e5 pawn and opens the center at once.",
+      "w": "The Scotch Four Knights: White prefers open play to the quiet Spanish."
+     },
+     "7": {
+      "a": [
+       [
+        "d4",
+        "c3",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "c3",
+        "target"
+       ]
+      ],
+      "t": "The pawn on d4 attacks the knight on c3.",
+      "w": "Why ...exd4: Black grabs the pawn with tempo."
+     },
+     "8": {
+      "a": [
+       [
+        "d4",
+        "c6",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "c6",
+        "target"
+       ]
+      ],
+      "t": "The knight attacks c6.",
+      "w": "Why Nxd4: it recaptures and centralizes the knight."
+     },
+     "9": {
+      "a": [
+       [
+        "b4",
+        "e1",
+        "pin"
+       ]
+      ],
+      "m": [
+       [
+        "c3",
+        "pinned"
+       ],
+       [
+        "e1",
+        "key"
+       ]
+      ],
+      "t": "The c3-knight is pinned to the king by the b4-bishop: it cannot legally move.",
+      "w": "Why ...Bb4: it develops with a pin."
+     },
+     "13": {
+      "a": [
+       [
+        "d5",
+        "e4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e4",
+        "target"
+       ]
+      ],
+      "t": "The pawn attacks e4.",
+      "w": "Why ...d5: Black takes the center."
+     }
     }
    }
-  ]
+  ],
+  "tagline": "Simple, symmetrical development",
+  "level": "Beginner",
+  "style": "Solid",
+  "ext": {
+   "4": {
+    "a": [
+     [
+      "c3",
+      "e4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "defend"
+     ]
+    ],
+    "w": "Why Nc3: it defends e4 and develops the second knight."
+   },
+   "5": {
+    "a": [
+     [
+      "f6",
+      "e4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "The knight attacks e4.",
+    "w": "Why ...Nf6: it copies White and hits e4."
+   },
+   "6": {
+    "a": [
+     [
+      "b5",
+      "c6",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "c6",
+      "target"
+     ],
+     [
+      "e5",
+      "key"
+     ]
+    ],
+    "t": "The bishop attacks the knight that guards e5.",
+    "w": "The Spanish Variation: pin the defender."
+   },
+   "7": {
+    "a": [
+     [
+      "b4",
+      "c3",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "c3",
+      "target"
+     ],
+     [
+      "e4",
+      "key"
+     ]
+    ],
+    "t": "Black pins the c3-knight, which guards e4.",
+    "w": "Why ...Bb4: it mirrors White's pin."
+   },
+   "10": {
+    "a": [
+     [
+      "d3",
+      "e4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "defend"
+     ]
+    ],
+    "w": "Why d3: it defends e4 solidly and opens the c1-bishop."
+   },
+   "11": {
+    "a": [
+     [
+      "d6",
+      "e5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "defend"
+     ]
+    ],
+    "w": "Why ...d6: it supports e5 and frees the c8-bishop."
+   },
+   "12": {
+    "a": [
+     [
+      "g5",
+      "d8",
+      "pin"
+     ]
+    ],
+    "m": [
+     [
+      "f6",
+      "pinned"
+     ],
+     [
+      "d8",
+      "key"
+     ]
+    ],
+    "t": "The f6-knight is pinned to the queen on d8. If it moves, Bxd8 wins the queen.",
+    "w": "Why Bg5: it adds pressure on Black's kingside."
+   },
+   "13": {
+    "m": [
+     [
+      "c3",
+      "target"
+     ]
+    ],
+    "t": "Black takes on c3 to double White's pawns.",
+    "w": "Why ...Bxc3: it damages White's structure and relieves the pin."
+   },
+   "15": {
+    "m": [
+     [
+      "d8",
+      "key"
+     ],
+     [
+      "e7",
+      "key"
+     ]
+    ],
+    "t": "Black sidesteps the pin on the queen. The position is balanced.",
+    "w": "Why ...Qe7: it unpins and prepares ...Bg4 or ...Nd8-e6."
+   }
+  },
+  "sides": [
+   "w",
+   "b"
+  ],
+  "nameFrom": 2
+ },
+ {
+  "id": "qgambit",
+  "name": "Queen's Gambit",
+  "side": "w",
+  "sides": [
+   "w",
+   "b"
+  ],
+  "nameFrom": 3,
+  "blurb": "The classic way to fight for the center with the queen-side pawn.",
+  "tagline": "Classic central fight (declined)",
+  "level": "Intermediate",
+  "style": "Classical \u00b7 Positional",
+  "moves": "d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 Nbd7",
+  "notes": [
+   "White takes the center and opens the c1-bishop.",
+   "Black takes the same share of the center.",
+   "The Queen's Gambit: White offers the c-pawn to deflect Black's d5 pawn. If ...dxc4, White regains it and keeps the better center.",
+   "The Queen's Gambit Declined: Black simply protects d5 and accepts a slightly passive c8-bishop.",
+   "A second attacker against d5, and development.",
+   "Black adds a defender to d5 and develops.",
+   "The bishop pins the f6-knight to the queen, which is an important defender of d5.",
+   "Black breaks the pin and prepares to castle.",
+   "A solid move that supports d4 and opens the f1-bishop.",
+   "Black castles and keeps the structure intact.",
+   "White develops and defends d4.",
+   "Black develops the last minor piece and prepares ...c5 or ...Ne4."
+  ],
+  "idea": "Attack d5 with the c-pawn and knights while keeping a healthy pawn center. Black declines the gambit and defends d5 with ...e6 and ...Nf6. The fight is about the center and who can free their position.",
+  "threats": [
+   "If Black takes ...dxc4 too early, White regains the pawn with e3 and Bxc4 and gets a strong center.",
+   "Bg5 pins the f6-knight: if it is removed, d5 loses a defender and Nxd5 becomes a threat.",
+   "Cxd5 exchanges can open the c-file and create minority-attack plans on the queenside.",
+   "Black's freeing breaks are ...c5 and ...e5: watch for them or Black equalizes easily."
+  ],
+  "variants": [
+   {
+    "name": "Slav Defense",
+    "note": "Black defends d5 with the c-pawn and keeps the bishop free.",
+    "moves": "d4 d5 c4 c6 Nf3 Nf6 Nc3 dxc4 a4 Bf5 e3 e6 Bxc4 Bb4",
+    "n": {
+     "3": "The Slav: Black supports d5 with a pawn but keeps the c8-bishop free.",
+     "4": "White develops and guards d4 and e5.",
+     "5": "Black develops and adds a defender to d5.",
+     "6": "White adds pressure on d5.",
+     "7": "Black takes the c-pawn now that the center is stable.",
+     "8": "White stops ...b5, so Black cannot keep the extra pawn.",
+     "9": "The Slav idea: the bishop comes out before ...e6 closes the diagonal.",
+     "10": "White prepares to take the c4 pawn back.",
+     "11": "Black solidifies the center and opens the f8-bishop.",
+     "12": "White regains the pawn and has a good central position.",
+     "13": "Black develops with pressure on the c3-knight."
+    },
+    "ext": {
+     "4": {
+      "a": [
+       [
+        "f3",
+        "d4",
+        "defend"
+       ],
+       [
+        "f3",
+        "e5",
+        "idea"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "defend"
+       ],
+       [
+        "e5",
+        "key"
+       ]
+      ],
+      "w": "Why Nf3: it defends d4 and controls e5."
+     },
+     "8": {
+      "a": [
+       [
+        "a4",
+        "b5",
+        "idea"
+       ]
+      ],
+      "m": [
+       [
+        "b5",
+        "key"
+       ]
+      ],
+      "t": "The pawn stops ...b5, the move Black needs to keep the extra pawn.",
+      "w": "Why a4: White prevents Black from holding the c4 pawn."
+     },
+     "9": {
+      "a": [
+       [
+        "f5",
+        "b1",
+        "idea"
+       ]
+      ],
+      "m": [
+       [
+        "f5",
+        "key"
+       ]
+      ],
+      "w": "Why ...Bf5: the bishop goes out before ...e6 closes the diagonal."
+     },
+     "12": {
+      "a": [
+       [
+        "c4",
+        "e6",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "e6",
+        "target"
+       ]
+      ],
+      "t": "The bishop eyes e6.",
+      "w": "Why Bxc4: White regains the pawn with a better center."
+     },
+     "13": {
+      "a": [
+       [
+        "b4",
+        "c3",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "c3",
+        "target"
+       ]
+      ],
+      "t": "The bishop attacks the knight on c3.",
+      "w": "Why ...Bb4: Black develops with pressure on the knight."
+     }
+    }
+   }
+  ],
+  "ext": {
+   "2": {
+    "a": [
+     [
+      "c4",
+      "d5",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "d5",
+      "target"
+     ]
+    ],
+    "t": "The c4 pawn attacks the d5 pawn.",
+    "w": "The Queen's Gambit: White offers the c-pawn to pull Black's d5 pawn away from the center."
+   },
+   "3": {
+    "a": [
+     [
+      "e6",
+      "d5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "d5",
+      "defend"
+     ]
+    ],
+    "w": "Why ...e6: it protects d5 solidly and opens the f8-bishop."
+   },
+   "4": {
+    "a": [
+     [
+      "c3",
+      "d5",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "d5",
+      "target"
+     ]
+    ],
+    "t": "A second attacker on d5: the knight and the c4 pawn hit it.",
+    "w": "Why Nc3: it adds pressure on d5 and develops."
+   },
+   "5": {
+    "a": [
+     [
+      "f6",
+      "d5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "d5",
+      "defend"
+     ]
+    ],
+    "w": "Why ...Nf6: it adds a defender to d5."
+   },
+   "6": {
+    "a": [
+     [
+      "g5",
+      "d8",
+      "pin"
+     ]
+    ],
+    "m": [
+     [
+      "f6",
+      "pinned"
+     ]
+    ],
+    "t": "The f6-knight is pinned to the queen on d8. If it moves, Bxd8 wins the queen.",
+    "w": "Why Bg5: it pins the knight, which is a key defender of d5."
+   },
+   "7": {
+    "a": [
+     [
+      "e7",
+      "f6",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "f6",
+      "defend"
+     ]
+    ],
+    "w": "Why ...Be7: it breaks the pin and prepares to castle."
+   },
+   "8": {
+    "a": [
+     [
+      "e3",
+      "d4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "defend"
+     ]
+    ],
+    "w": "Why e3: it supports d4 and opens the f1-bishop."
+   },
+   "10": {
+    "a": [
+     [
+      "f3",
+      "d4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "defend"
+     ]
+    ],
+    "w": "Why Nf3: it defends d4 and prepares to castle."
+   },
+   "11": {
+    "a": [
+     [
+      "d7",
+      "f6",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "f6",
+      "defend"
+     ]
+    ],
+    "t": "No direct threat. Black prepares ...c5 or ...Ne4.",
+    "w": "Why ...Nbd7: the knight supports f6 and e5 without blocking the c-pawn."
+   }
+  }
+ },
+ {
+  "id": "london",
+  "name": "London System",
+  "side": "w",
+  "sides": [
+   "w"
+  ],
+  "nameFrom": 3,
+  "blurb": "A solid, easy-to-learn setup for White that works against almost anything.",
+  "tagline": "One setup, minimal theory",
+  "level": "Beginner",
+  "style": "Solid \u00b7 Positional",
+  "moves": "d4 d5 Bf4 Nf6 e3 e6 Nf3 c5 c3 Nc6 Nbd2 Bd6 Bg3 O-O Bd3",
+  "notes": [
+   "White grabs space in the center and opens the c1-bishop.",
+   "Black stakes the same claim in the center.",
+   "The London bishop comes out OUTSIDE the pawn chain before ...e6 can shut it in.",
+   "Black develops and watches e4 and d5.",
+   "A solid move: it supports d4 and opens the f1-bishop.",
+   "Black supports d5 and opens the f8-bishop.",
+   "The knight develops and guards d4 and e5.",
+   "Black attacks d4 at once, challenging White's center.",
+   "c3 supports d4 and builds a sturdy pawn triangle (c3-d4-e3).",
+   "Black adds a second attacker against d4.",
+   "The last minor piece develops without blocking the c-pawn, and it supports e4.",
+   "Black challenges the London bishop on the b8-h2 diagonal.",
+   "The bishop steps back but keeps the diagonal. If ...Bxg3, hxg3 gives White the h-file.",
+   "Black finishes development and castles.",
+   "White completes the setup; the bishops now aim at the kingside and e4 or Ne5 is next."
+  ],
+  "idea": "Build the same solid setup every time: pawns on d4, e3 and c3, bishop out on f4 before ...e6, then Nf3, Nbd2 and Bd3. The plan is a safe king and a later e4 break or a kingside attack.",
+  "threats": [
+   "The b8-h2 diagonal: the f4-bishop eyes c7 and can pressure the queenside if Black is careless.",
+   "...Bd6 challenges the bishop: be ready to retreat to g3 rather than lose time.",
+   "Black's ...c5 and ...Nc6 hit d4, so c3 and Nbd2 must keep it protected.",
+   "The h2-pawn is only guarded by the king and g3-bishop: do not let Black win the bishop pair cheaply."
+  ],
+  "variants": [
+   {
+    "name": "Mirror ...Bf5",
+    "note": "Black copies the London bishop and trades the good bishops.",
+    "moves": "d4 d5 Bf4 Bf5 e3 e6 Bd3 Bxd3 Qxd3 Nf6 Nf3 Bd6 Bxd6 Qxd6",
+    "n": {
+     "3": "Black mirrors the idea: the bishop comes out before ...e6.",
+     "4": "White keeps the solid setup.",
+     "5": "Black closes the diagonal behind the bishop, now safe.",
+     "6": "White offers a trade of the light-squared bishops.",
+     "7": "Black accepts.",
+     "8": "The queen recaptures and keeps a flexible center.",
+     "9": "Black develops and watches e4.",
+     "10": "White develops the knight.",
+     "11": "Black challenges the London bishop.",
+     "12": "White trades the dark-squared bishops too.",
+     "13": "Black recaptures. The position is equal and simple to play."
+    },
+    "ext": {
+     "3": {
+      "a": [
+       [
+        "f5",
+        "c2",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "c2",
+        "target"
+       ]
+      ],
+      "t": "The bishop eyes the c2 pawn, defended only by the queen.",
+      "w": "Why ...Bf5: Black copies White and gets the bishop out first."
+     },
+     "6": {
+      "a": [
+       [
+        "d3",
+        "f5",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "f5",
+        "target"
+       ]
+      ],
+      "t": "The bishop offers a trade on f5.",
+      "w": "Why Bd3: the light bishops are traded, leaving a quiet position."
+     },
+     "11": {
+      "a": [
+       [
+        "d6",
+        "f4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "f4",
+        "target"
+       ]
+      ],
+      "t": "The bishop attacks the London bishop.",
+      "w": "Why ...Bd6: Black challenges the b8-h2 diagonal."
+     }
+    }
+   }
+  ],
+  "ext": {
+   "2": {
+    "a": [
+     [
+      "f4",
+      "c7",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "c7",
+      "key"
+     ]
+    ],
+    "t": "The bishop eyes c7, which only the queen defends.",
+    "w": "The London bishop: it is developed before Black can lock it in with ...e6."
+   },
+   "4": {
+    "a": [
+     [
+      "e3",
+      "d4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "defend"
+     ]
+    ],
+    "w": "Why e3: it supports d4 and gives the f1-bishop room."
+   },
+   "6": {
+    "a": [
+     [
+      "f3",
+      "d4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "defend"
+     ]
+    ],
+    "w": "Why Nf3: it defends d4 and prepares to castle."
+   },
+   "7": {
+    "a": [
+     [
+      "c5",
+      "d4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "target"
+     ]
+    ],
+    "t": "The c5 pawn attacks the d4 pawn.",
+    "w": "Why ...c5: it is Black's main way to challenge White's center."
+   },
+   "8": {
+    "a": [
+     [
+      "c3",
+      "d4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "defend"
+     ]
+    ],
+    "w": "Why c3: it supports d4 solidly and gives the queen the c2/b3 squares."
+   },
+   "9": {
+    "a": [
+     [
+      "c6",
+      "d4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "target"
+     ]
+    ],
+    "t": "A second attacker on d4: Black has two against White's two defenders.",
+    "w": "Why ...Nc6: it adds pressure on d4 while developing."
+   },
+   "10": {
+    "a": [
+     [
+      "d2",
+      "e4",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "key"
+     ]
+    ],
+    "w": "Why Nbd2: it supports a later e4 and keeps the c-pawn free to protect d4."
+   },
+   "11": {
+    "a": [
+     [
+      "d6",
+      "f4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "f4",
+      "target"
+     ]
+    ],
+    "t": "The bishop attacks the London bishop.",
+    "w": "Why ...Bd6: Black challenges the b8-h2 diagonal."
+   },
+   "12": {
+    "a": [
+     [
+      "g3",
+      "d6",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "d6",
+      "target"
+     ]
+    ],
+    "t": "The bishop stays on the diagonal and eyes d6.",
+    "w": "Why Bg3: it avoids losing the bishop for nothing and keeps the diagonal."
+   },
+   "14": {
+    "a": [
+     [
+      "d3",
+      "h7",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "h7",
+      "target"
+     ]
+    ],
+    "t": "The bishop eyes the h7 pawn along the b1-h7 diagonal.",
+    "w": "Why Bd3: it completes the setup and points at Black's king."
+   }
+  }
+ },
+ {
+  "id": "caro",
+  "name": "Caro-Kann Defense",
+  "side": "b",
+  "blurb": "A rock-solid answer to 1.e4 that keeps a healthy pawn structure and a free light-squared bishop.",
+  "moves": "e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7",
+  "notes": [
+   "White takes the center with the king's pawn.",
+   "The Caro-Kann: Black prepares ...d5 with a pawn on c6, so the c8-bishop is not locked in (unlike the French).",
+   "White builds a big pawn center.",
+   "Black challenges the e4 pawn right away.",
+   "White defends e4 with a knight.",
+   "Black trades the center pawn and opens the position.",
+   "White recaptures and leads in development.",
+   "The key Caro-Kann idea: bring the bishop out before closing the pawn chain with ...e6.",
+   "The knight attacks the bishop with tempo.",
+   "The bishop stays active on the diagonal and is safe behind the pawn chain.",
+   "White threatens h5 to harass the bishop.",
+   "Black stops Ng5 and prepares a retreat square on h7.",
+   "White develops the last minor piece toward the center.",
+   "Black develops and supports ...Ngf6. The structure is healthy and there are no weaknesses to attack."
+  ],
+  "idea": "Black prepares ...d5 with a solid pawn on c6, keeping a healthy structure and a free light-squared bishop. The goal is safety first and counterplay later.",
+  "threats": [
+   "After exd5 cxd5, White's Qb3 hits d5 and b7 at the same time.",
+   "In the Classical line, h4\u2013h5 harasses the bishop, so Black must keep it safe on g6 or h7.",
+   "Do not lock the bishop in with ...e6 before developing it: that is the typical French problem.",
+   "In the Advance Variation Black attacks the base of the chain with ...c5 and ...Qb6."
+  ],
+  "variants": [
+   {
+    "name": "Advance Variation",
+    "note": "White gains space with e5; Black hits the pawn chain.",
+    "moves": "e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2 c5 Be3 Nc6 O-O Qb6",
+    "n": {
+     "4": "The Advance Variation: White gains space and fixes the pawn chain.",
+     "5": "Black develops the bishop BEFORE playing ...e6. That is the Caro-Kann trump.",
+     "6": "White develops the knight.",
+     "7": "Now the bishop is outside the pawn chain and safe.",
+     "8": "White prepares to castle.",
+     "9": "Black attacks the base of White's pawn chain, d4.",
+     "10": "White defends d4.",
+     "11": "Black adds more pressure on d4.",
+     "12": "White castles.",
+     "13": "Black pressures d4 and b2. The play is balanced and typical for this line."
+    },
+    "ext": {
+     "4": {
+      "a": [
+       [
+        "e5",
+        "d6",
+        "idea"
+       ],
+       [
+        "e5",
+        "f6",
+        "idea"
+       ]
+      ],
+      "m": [
+       [
+        "d6",
+        "key"
+       ],
+       [
+        "f6",
+        "key"
+       ]
+      ],
+      "t": "The pawn takes space and cramps Black: d6 and f6 are no longer available to Black pieces.",
+      "w": "The Advance Variation: White gains space but gives up piece pressure on d5."
+     },
+     "5": {
+      "a": [
+       [
+        "f5",
+        "c2",
+        "idea"
+       ]
+      ],
+      "m": [
+       [
+        "f5",
+        "key"
+       ]
+      ],
+      "w": "The Caro-Kann trump: the bishop goes out BEFORE ...e6 closes the diagonal."
+     },
+     "9": {
+      "a": [
+       [
+        "c5",
+        "d4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "target"
+       ]
+      ],
+      "t": "The pawn attacks the base of White's pawn chain.",
+      "w": "Why ...c5: breaking the chain is Black's main plan."
+     },
+     "10": {
+      "a": [
+       [
+        "e3",
+        "d4",
+        "defend"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "defend"
+       ]
+      ],
+      "w": "Why Be3: it defends d4 and develops."
+     },
+     "11": {
+      "a": [
+       [
+        "c6",
+        "d4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "target"
+       ]
+      ],
+      "t": "A second attacker on d4.",
+      "w": "Why ...Nc6: more pressure on d4."
+     },
+     "13": {
+      "a": [
+       [
+        "b6",
+        "b2",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "b2",
+        "target"
+       ]
+      ],
+      "t": "The queen attacks b2 and adds pressure on d4.",
+      "w": "Why ...Qb6: it creates two threats at once."
+     }
+    }
+   },
+   {
+    "name": "Exchange Variation",
+    "note": "White simplifies into a symmetrical structure.",
+    "moves": "e4 c6 d4 d5 exd5 cxd5 Bd3 Nc6 c3 Nf6 Bf4 Bg4 Qb3 Qd7",
+    "n": {
+     "4": "The Exchange Variation: White simplifies and gets a symmetrical pawn structure.",
+     "5": "Black recaptures and the c-file opens.",
+     "6": "White develops and eyes the kingside.",
+     "7": "Black develops the knight.",
+     "8": "White solidifies the d4 pawn.",
+     "9": "Black develops and adds pressure on d5.",
+     "10": "White develops the bishop outside the pawn chain.",
+     "11": "Black does the same idea and attacks the queen on d1.",
+     "12": "White hits d5 and b7 at once.",
+     "13": "Black protects b7 and keeps everything together."
+    },
+    "ext": {
+     "4": {
+      "m": [
+       [
+        "d5",
+        "target"
+       ]
+      ],
+      "t": "White simplifies; the center becomes symmetrical.",
+      "w": "The Exchange Variation: White avoids theory and aims for a simple, solid game."
+     },
+     "11": {
+      "a": [
+       [
+        "g4",
+        "d1",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d1",
+        "target"
+       ]
+      ],
+      "t": "The bishop attacks the queen on d1 and forces it to move.",
+      "w": "Why ...Bg4: develop the bishop outside the pawn chain with tempo."
+     },
+     "12": {
+      "a": [
+       [
+        "b3",
+        "d5",
+        "threat"
+       ],
+       [
+        "b3",
+        "b7",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d5",
+        "target"
+       ],
+       [
+        "b7",
+        "target"
+       ]
+      ],
+      "t": "The queen attacks d5 and b7 at once.",
+      "w": "Why Qb3: a double attack that forces Black to defend carefully."
+     },
+     "13": {
+      "a": [
+       [
+        "d7",
+        "b7",
+        "defend"
+       ]
+      ],
+      "m": [
+       [
+        "b7",
+        "defend"
+       ]
+      ],
+      "w": "Why ...Qd7: it defends b7 and keeps d5 protected."
+     }
+    }
+   }
+  ],
+  "tagline": "A rock-solid answer to 1.e4",
+  "level": "Beginner",
+  "style": "Solid",
+  "ext": {
+   "1": {
+    "a": [
+     [
+      "c6",
+      "d5",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "d5",
+      "key"
+     ]
+    ],
+    "t": "Nothing is threatened, but ...d5 is coming.",
+    "w": "Why ...c6: it supports ...d5 without blocking the c8-bishop."
+   },
+   "3": {
+    "a": [
+     [
+      "d5",
+      "e4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "The pawn attacks e4.",
+    "w": "Why ...d5: it challenges White's center immediately."
+   },
+   "4": {
+    "a": [
+     [
+      "c3",
+      "e4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "defend"
+     ]
+    ],
+    "w": "Why Nc3: it defends e4 and develops. (e5 is the Advance, exd5 the Exchange.)"
+   },
+   "5": {
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "Black takes the pawn: if White does not recapture, it is a free pawn.",
+    "w": "Why ...dxe4: it opens the position and removes White's central pawn."
+   },
+   "6": {
+    "m": [
+     [
+      "e4",
+      "key"
+     ]
+    ],
+    "t": "White regains the pawn and leads in development.",
+    "w": "Why Nxe4: the knight goes to a strong central square."
+   },
+   "7": {
+    "a": [
+     [
+      "f5",
+      "e4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "The bishop attacks the knight on e4 before ...e6 closes the diagonal.",
+    "w": "The key Caro-Kann idea: develop the bishop outside the pawn chain first."
+   },
+   "8": {
+    "a": [
+     [
+      "g3",
+      "f5",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "f5",
+      "target"
+     ]
+    ],
+    "t": "The knight attacks the bishop.",
+    "w": "Why Ng3: it gains time and keeps the strong knight."
+   },
+   "9": {
+    "a": [
+     [
+      "g6",
+      "d3",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "g6",
+      "key"
+     ]
+    ],
+    "w": "Why ...Bg6: the bishop stays safe on the b1-h7 diagonal and keeps its activity."
+   },
+   "10": {
+    "a": [
+     [
+      "h4",
+      "h5",
+      "plan"
+     ]
+    ],
+    "m": [
+     [
+      "g6",
+      "target"
+     ]
+    ],
+    "t": "Next comes h5, attacking the bishop and gaining space.",
+    "w": "Why h4: White tries to harass the bishop."
+   },
+   "11": {
+    "a": [
+     [
+      "h6",
+      "g5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "g5",
+      "defend"
+     ]
+    ],
+    "t": "The pawn stops Ng5 and prepares to retreat the bishop to h7.",
+    "w": "Why ...h6: it takes away g5 and secures the bishop."
+   },
+   "12": {
+    "a": [
+     [
+      "f3",
+      "e5",
+      "idea"
+     ],
+     [
+      "f3",
+      "g5",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "key"
+     ],
+     [
+      "g5",
+      "key"
+     ]
+    ],
+    "w": "Why Nf3: it develops and eyes e5 and g5."
+   },
+   "13": {
+    "a": [
+     [
+      "d7",
+      "f6",
+      "plan"
+     ]
+    ],
+    "m": [
+     [
+      "f6",
+      "key"
+     ]
+    ],
+    "t": "No threat. Black prepares ...Ngf6 and ...Bh7 with a solid position.",
+    "w": "Why ...Nd7: it develops without blocking the bishop and supports ...Ngf6."
+   }
+  },
+  "sides": [
+   "b"
+  ],
+  "nameFrom": 2
+ },
+ {
+  "id": "sicilian",
+  "name": "Sicilian Defense",
+  "side": "b",
+  "sides": [
+   "b"
+  ],
+  "nameFrom": 2,
+  "blurb": "The most popular reply to 1.e4: fight for the center from the flank.",
+  "tagline": "Sharp counterattack against 1.e4",
+  "level": "Intermediate",
+  "style": "Dynamic \u00b7 Counterattacking",
+  "moves": "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6",
+  "notes": [
+   "White takes the center with the king's pawn.",
+   "The Sicilian: Black fights for d4 from the side. The position becomes asymmetrical, with chances for both sides.",
+   "White prepares d4 and develops.",
+   "Black controls e5 and prepares ...Nf6 and ...cxd4.",
+   "White strikes in the center: the Open Sicilian.",
+   "Black trades the c-pawn for White's d-pawn, gaining a healthy center pawn majority later.",
+   "White recaptures and the knight stands strongly in the center.",
+   "Black attacks e4 and develops.",
+   "White defends e4 and develops.",
+   "The Najdorf: it stops Nb5 and prepares ...e5 or ...b5 with queenside space.",
+   "The English Attack setup: Be3, f3, Qd2 and castling queenside.",
+   "Black kicks the d4 knight and grabs central space.",
+   "The knight retreats, keeping an eye on the d5 square.",
+   "Black develops, controls d5 and pressures the b3 knight."
+  ],
+  "idea": "Black does not copy White. Instead, Black trades a flank pawn for a central one, gets an extra center pawn and counterattacks on the queenside while White usually attacks on the kingside. The play is sharp and rich in tactics.",
+  "threats": [
+   "After ...cxd4 Nxd4, the d4-knight is a target: ...e5 or ...Nc6 will kick it.",
+   "The e4 pawn is attacked by ...Nf6: White must defend it or accept ...Nxe4 tricks.",
+   "Open lines on the c-file: Black's rooks aim at c3 and White's queenside.",
+   "White's Bb5+ ideas and Nd5 jumps are controlled by ...a6 and ...e5 respectively."
+  ],
+  "variants": [
+   {
+    "name": "Dragon Variation",
+    "note": "Black fianchettoes the bishop for the long diagonal.",
+    "moves": "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2 Nc6",
+    "n": {
+     "9": "The Dragon: Black fianchettoes the bishop onto the long diagonal.",
+     "10": "White develops the bishop and prepares f3 and Qd2.",
+     "11": "The bishop will look down the long diagonal once the f6-knight moves.",
+     "12": "White defends e4 and prepares queenside castling.",
+     "13": "Black castles to safety.",
+     "14": "The Yugoslav Attack: White will castle queenside and push the kingside pawns.",
+     "15": "Black adds pressure on d4 and prepares ...Bd7 and ...Rc8."
+    },
+    "ext": {
+     "9": {
+      "a": [
+       [
+        "g6",
+        "h5",
+        "idea"
+       ]
+      ],
+      "m": [
+       [
+        "g7",
+        "key"
+       ]
+      ],
+      "w": "Why ...g6: the bishop will go to g7 and pressure the long diagonal."
+     },
+     "11": {
+      "a": [
+       [
+        "g7",
+        "f6",
+        "defend"
+       ]
+      ],
+      "m": [
+       [
+        "f6",
+        "defend"
+       ]
+      ],
+      "t": "The bishop supports the knight and will open the long diagonal.",
+      "w": "Why ...Bg7: the Dragon bishop is the key piece of this variation."
+     },
+     "12": {
+      "a": [
+       [
+        "f3",
+        "e4",
+        "defend"
+       ]
+      ],
+      "m": [
+       [
+        "e4",
+        "defend"
+       ]
+      ],
+      "w": "Why f3: it defends e4 and prepares the Yugoslav setup."
+     },
+     "14": {
+      "a": [
+       [
+        "e3",
+        "h6",
+        "plan"
+       ]
+      ],
+      "m": [
+       [
+        "h6",
+        "key"
+       ]
+      ],
+      "t": "White plans Bh6 to trade the Dragon bishop.",
+      "w": "Why Qd2: it connects with Bh6 and prepares long castling."
+     },
+     "15": {
+      "a": [
+       [
+        "c6",
+        "d4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "target"
+       ]
+      ],
+      "t": "The knight attacks d4.",
+      "w": "Why ...Nc6: it adds pressure on d4 and develops."
+     }
+    }
+   }
+  ],
+  "ext": {
+   "1": {
+    "a": [
+     [
+      "c5",
+      "d4",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "key"
+     ]
+    ],
+    "t": "The pawn controls d4 and prepares to trade it for White's center pawn.",
+    "w": "Why ...c5: Black fights for d4 without mirroring 1.e4 e5."
+   },
+   "4": {
+    "a": [
+     [
+      "d4",
+      "c5",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "c5",
+      "target"
+     ]
+    ],
+    "t": "The d4 pawn attacks the c5 pawn.",
+    "w": "Why d4: White opens the center. This is the Open Sicilian."
+   },
+   "6": {
+    "m": [
+     [
+      "d4",
+      "key"
+     ]
+    ],
+    "t": "The knight is strong on d4, but Black will attack it.",
+    "w": "Why Nxd4: the knight gets a central post."
+   },
+   "7": {
+    "a": [
+     [
+      "f6",
+      "e4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "The knight attacks e4.",
+    "w": "Why ...Nf6: it develops with tempo."
+   },
+   "8": {
+    "a": [
+     [
+      "c3",
+      "e4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "defend"
+     ]
+    ],
+    "w": "Why Nc3: it defends e4 and develops."
+   },
+   "9": {
+    "a": [
+     [
+      "a6",
+      "b5",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "b5",
+      "key"
+     ]
+    ],
+    "w": "Why ...a6: it stops Nb5 and Bb5+ and prepares ...b5."
+   },
+   "11": {
+    "a": [
+     [
+      "e5",
+      "d4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "target"
+     ]
+    ],
+    "t": "The e5 pawn attacks the knight on d4.",
+    "w": "Why ...e5: Black kicks the knight and takes the center."
+   },
+   "13": {
+    "a": [
+     [
+      "e6",
+      "b3",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "b3",
+      "target"
+     ]
+    ],
+    "t": "The bishop attacks the b3 knight and controls d5.",
+    "w": "Why ...Be6: it develops with pressure and covers d5."
+   }
+  }
+ },
+ {
+  "id": "french",
+  "name": "French Defense",
+  "side": "b",
+  "sides": [
+   "b"
+  ],
+  "nameFrom": 2,
+  "blurb": "A solid reply to 1.e4 that attacks White's center with ...d5.",
+  "tagline": "Solid pawn chain, counterplay on the queenside",
+  "level": "Intermediate",
+  "style": "Solid \u00b7 Strategic",
+  "moves": "e4 e6 d4 d5 Nc3 Nf6 Bg5 Be7 e5 Nfd7 Bxe7 Qxe7 f4 O-O",
+  "notes": [
+   "White takes the center with the king's pawn.",
+   "The French: Black prepares ...d5 with a pawn on e6, accepting a temporarily passive c8-bishop for a solid structure.",
+   "White builds a classical pawn center.",
+   "Black challenges e4 immediately.",
+   "White defends e4 and develops.",
+   "Black attacks e4 and develops.",
+   "The bishop pins the f6-knight to the queen: it is a relative pin, since the queen sits behind the knight.",
+   "Black breaks the pin and prepares to castle.",
+   "White gains space and attacks the f6 knight.",
+   "The knight retreats and attacks the e5 pawn. Black will strike at the chain with ...c5 and ...f6.",
+   "White trades Black's good dark-squared bishop.",
+   "Black recaptures and eyes e5.",
+   "White reinforces the e5 pawn and fixes the pawn chain.",
+   "Black castles and prepares ...c5 to attack d4's base."
+  ],
+  "idea": "Black builds a sturdy pawn chain (e6-d5) and strikes at White's center with ...c5 and ...f6. White gains space with e5, so Black needs counterplay: attack the base of the chain on d4 and free the light-squared bishop.",
+  "threats": [
+   "The e5 pawn: Black's ...c5, ...Nc6 and ...f6 all hit the pawn chain.",
+   "The c8-bishop is Black's problem piece: it must be activated, often via ...b6 and ...Ba6.",
+   "Bxh7+ sacrifices when Black's king castles with a bishop aimed at h7 and a knight ready on g5.",
+   "In the Advance line, White's d4 pawn is the key target for ...c5, ...Nc6 and ...Qb6."
+  ],
+  "variants": [
+   {
+    "name": "Advance Variation",
+    "note": "White gains space with e5; Black attacks the base of the chain.",
+    "moves": "e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3 Qb6 a3 c4",
+    "n": {
+     "4": "The Advance: White gains space and locks the center.",
+     "5": "Black immediately attacks the base of the pawn chain.",
+     "6": "White supports d4.",
+     "7": "A second attacker on d4.",
+     "8": "White develops and defends d4.",
+     "9": "Black piles up on d4 and eyes b2.",
+     "10": "White prepares b4 and stops ...Bb4.",
+     "11": "Black gains queenside space and closes the position."
+    },
+    "ext": {
+     "4": {
+      "a": [
+       [
+        "e5",
+        "d6",
+        "idea"
+       ],
+       [
+        "e5",
+        "f6",
+        "idea"
+       ]
+      ],
+      "m": [
+       [
+        "d6",
+        "key"
+       ],
+       [
+        "f6",
+        "key"
+       ]
+      ],
+      "t": "The e5 pawn takes d6 and f6 away from Black's pieces.",
+      "w": "The Advance Variation: White gets space but gives up central tension."
+     },
+     "5": {
+      "a": [
+       [
+        "c5",
+        "d4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "target"
+       ]
+      ],
+      "t": "The c5 pawn attacks d4.",
+      "w": "Why ...c5: break the pawn chain at its base."
+     },
+     "7": {
+      "a": [
+       [
+        "c6",
+        "d4",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "target"
+       ]
+      ],
+      "t": "A second attacker on d4.",
+      "w": "Why ...Nc6: more pressure on d4."
+     },
+     "8": {
+      "a": [
+       [
+        "f3",
+        "d4",
+        "defend"
+       ]
+      ],
+      "m": [
+       [
+        "d4",
+        "defend"
+       ]
+      ],
+      "w": "Why Nf3: it adds a defender to d4."
+     },
+     "9": {
+      "a": [
+       [
+        "b6",
+        "b2",
+        "threat"
+       ]
+      ],
+      "m": [
+       [
+        "b2",
+        "target"
+       ]
+      ],
+      "t": "The queen attacks b2 and adds pressure on d4.",
+      "w": "Why ...Qb6: a double threat on the weak points b2 and d4."
+     },
+     "10": {
+      "a": [
+       [
+        "a3",
+        "b4",
+        "idea"
+       ]
+      ],
+      "m": [
+       [
+        "b4",
+        "key"
+       ]
+      ],
+      "w": "Why a3: it prepares b4 and takes b4 from Black's bishop."
+     }
+    }
+   }
+  ],
+  "ext": {
+   "1": {
+    "a": [
+     [
+      "e6",
+      "d5",
+      "idea"
+     ]
+    ],
+    "m": [
+     [
+      "d5",
+      "key"
+     ]
+    ],
+    "t": "Nothing is threatened, but ...d5 is coming.",
+    "w": "Why ...e6: it prepares ...d5 with a solid pawn chain."
+   },
+   "3": {
+    "a": [
+     [
+      "d5",
+      "e4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "The d5 pawn attacks e4.",
+    "w": "Why ...d5: Black immediately challenges White's center."
+   },
+   "4": {
+    "a": [
+     [
+      "c3",
+      "e4",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "defend"
+     ]
+    ],
+    "w": "Why Nc3: it defends e4 and develops."
+   },
+   "5": {
+    "a": [
+     [
+      "f6",
+      "e4",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e4",
+      "target"
+     ]
+    ],
+    "t": "The knight attacks e4.",
+    "w": "Why ...Nf6: it develops with a threat."
+   },
+   "6": {
+    "a": [
+     [
+      "g5",
+      "d8",
+      "pin"
+     ]
+    ],
+    "m": [
+     [
+      "f6",
+      "pinned"
+     ]
+    ],
+    "t": "The f6-knight is pinned to the queen on d8.",
+    "w": "Why Bg5: it pins the knight and prepares to trade on f6 or e7."
+   },
+   "7": {
+    "a": [
+     [
+      "e7",
+      "f6",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "f6",
+      "defend"
+     ]
+    ],
+    "w": "Why ...Be7: it breaks the pin and prepares to castle."
+   },
+   "8": {
+    "a": [
+     [
+      "e5",
+      "f6",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "f6",
+      "target"
+     ]
+    ],
+    "t": "The e5 pawn attacks the f6 knight.",
+    "w": "Why e5: White gains space and kicks the knight."
+   },
+   "9": {
+    "a": [
+     [
+      "d7",
+      "e5",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "target"
+     ]
+    ],
+    "t": "The knight attacks the e5 pawn.",
+    "w": "Why ...Nfd7: the knight retreats and hits e5."
+   },
+   "10": {
+    "a": [
+     [
+      "e7",
+      "d8",
+      "threat"
+     ]
+    ],
+    "m": [
+     [
+      "d8",
+      "target"
+     ]
+    ],
+    "t": "The bishop attacks the queen on d8 after the trade.",
+    "w": "Why Bxe7: White trades off Black's good bishop."
+   },
+   "12": {
+    "a": [
+     [
+      "f4",
+      "e5",
+      "defend"
+     ]
+    ],
+    "m": [
+     [
+      "e5",
+      "defend"
+     ]
+    ],
+    "w": "Why f4: it reinforces e5 and fixes the chain."
+   },
+   "13": {
+    "a": [
+     [
+      "c7",
+      "c5",
+      "plan"
+     ]
+    ],
+    "m": [
+     [
+      "d4",
+      "key"
+     ]
+    ],
+    "t": "Black plans ...c5 to attack d4.",
+    "w": "Why ...O-O: Black safeguards the king before opening the center."
+   }
+  }
  }
 ];
 
 /* =====================================================================
-   Interactive lessons (Learn > Lessons). Positions and solutions were
-   verified with a legal-move checker. accept = allowed first moves (uci).
+   Interactive lessons (Learn > Lessons). Positions, solutions and board illustrations
+   were verified with a legal-move checker. accept = allowed first moves (uci);
+   show = arrows/marks drawn after the move, keyed by the uci move played.
    ===================================================================== */
 const DRILLS = [
  {
@@ -588,6 +3267,20 @@ const DRILLS = [
     "wrong": {
      "e1f1": "The king only stepped one square. Castling is a two-square king move: go to g1.",
      "h1f1": "Moving the rook alone is not castling. Move the king two squares and the rook follows."
+    },
+    "show": {
+     "e1g1": {
+      "m": [
+       [
+        "g1",
+        "key"
+       ],
+       [
+        "f1",
+        "key"
+       ]
+      ]
+     }
     }
    },
    {
@@ -600,6 +3293,20 @@ const DRILLS = [
     "ok": "Long castling: the king goes to c1 and the rook to d1. All the squares between king and rook had to be empty.",
     "wrong": {
      "e1d1": "One step is not castling. For long castling the king travels two squares to c1."
+    },
+    "show": {
+     "e1c1": {
+      "m": [
+       [
+        "c1",
+        "key"
+       ],
+       [
+        "d1",
+        "key"
+       ]
+      ]
+     }
     }
    },
    {
@@ -613,6 +3320,20 @@ const DRILLS = [
     "wrong": {
      "e8f8": "Only one square. Castling needs the king to jump two squares: g8.",
      "h8f8": "The rook cannot castle by itself. Move the king two squares."
+    },
+    "show": {
+     "e8g8": {
+      "m": [
+       [
+        "g8",
+        "key"
+       ],
+       [
+        "f8",
+        "key"
+       ]
+      ]
+     }
     }
    }
   ]
@@ -633,6 +3354,20 @@ const DRILLS = [
     "ok": "Exd6 en passant! Your pawn lands on d6 and the black pawn on d5 is removed, as if it had only moved one square.",
     "wrong": {
      "e5e6": "Pushing is legal, but you can capture the d5 pawn \u201cin passing\u201d right now. Move diagonally to d6."
+    },
+    "show": {
+     "e5d6": {
+      "m": [
+       [
+        "d6",
+        "key"
+       ],
+       [
+        "d5",
+        "target"
+       ]
+      ]
+     }
     }
    },
    {
@@ -645,6 +3380,136 @@ const DRILLS = [
     "ok": "Exd3 en passant! It works for Black too, and only on the very next move after the double step.",
     "wrong": {
      "e4e3": "Advancing is legal, but the en passant chance would be gone next move. Capture on d3 now."
+    },
+    "show": {
+     "e4d3": {
+      "m": [
+       [
+        "d3",
+        "key"
+       ],
+       [
+        "d4",
+        "target"
+       ]
+      ]
+     }
+    }
+   }
+  ]
+ },
+ {
+  "id": "fork",
+  "name": "Forks",
+  "blurb": "Attack two pieces at once and win one of them.",
+  "goal": "A fork is a single move that attacks two (or more) enemy pieces at the same time. The opponent can only save one, so you win material. Knights are the classic forkers, but pawns and queens fork too.",
+  "steps": [
+   {
+    "fen": "r3k3/8/8/1N6/8/8/8/4K3 w - - 0 1",
+    "task": "Fork the king and the rook with your knight.",
+    "accept": [
+     "b5c7"
+    ],
+    "hint": "A knight on c7 attacks both e8 and a8.",
+    "ok": "Nc7+ forks the king and the rook: the king has to move, and then Nxa8 wins the rook.",
+    "wrong": {
+     "b5d6": "That is check, but the knight attacks only the king. Find the square that hits the king AND the rook."
+    },
+    "show": {
+     "b5c7": {
+      "a": [
+       [
+        "c7",
+        "e8",
+        "fork"
+       ],
+       [
+        "c7",
+        "a8",
+        "fork"
+       ]
+      ],
+      "m": [
+       [
+        "a8",
+        "target"
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "fen": "6k1/8/2n1n3/8/3P4/8/8/6K1 w - - 0 1",
+    "task": "Fork the two knights with a pawn.",
+    "accept": [
+     "d4d5"
+    ],
+    "hint": "A pawn on d5 attacks both c6 and e6.",
+    "ok": "d5 forks both knights. One of them will be lost, and you only risked a pawn.",
+    "wrong": {},
+    "show": {
+     "d4d5": {
+      "a": [
+       [
+        "d5",
+        "c6",
+        "fork"
+       ],
+       [
+        "d5",
+        "e6",
+        "fork"
+       ]
+      ],
+      "m": [
+       [
+        "c6",
+        "target"
+       ],
+       [
+        "e6",
+        "target"
+       ]
+      ]
+     }
+    }
+   },
+   {
+    "fen": "4k3/5q2/8/8/2N5/8/8/4K3 w - - 0 1",
+    "task": "Fork the king and the queen with a knight check.",
+    "accept": [
+     "c4d6"
+    ],
+    "hint": "From d6 the knight gives check to e8 and also attacks the queen on f7.",
+    "ok": "Nd6+ forks the king and the queen. Black must deal with the check, and then Nxf7 wins the queen.",
+    "wrong": {
+     "c4e5": "The knight attacks the queen, but she simply moves away. Give check at the same time: that is what makes it a real fork."
+    },
+    "show": {
+     "c4d6": {
+      "a": [
+       [
+        "d6",
+        "e8",
+        "fork"
+       ],
+       [
+        "d6",
+        "f7",
+        "fork"
+       ]
+      ],
+      "m": [
+       [
+        "f7",
+        "target"
+       ],
+       [
+        "e8",
+        "target"
+       ]
+      ]
+     }
     }
    }
   ]
@@ -665,6 +3530,27 @@ const DRILLS = [
     "ok": "Bg5 pins the knight to the queen. If it moves, Bxd8 wins the queen \u2014 that is a relative pin.",
     "wrong": {
      "c1e3": "A fine developing move, but it pins nothing. Aim at the f6 knight with the queen behind it."
+    },
+    "show": {
+     "c1g5": {
+      "a": [
+       [
+        "g5",
+        "d8",
+        "pin"
+       ]
+      ],
+      "m": [
+       [
+        "f6",
+        "pinned"
+       ],
+       [
+        "d8",
+        "key"
+       ]
+      ]
+     }
     }
    },
    {
@@ -677,6 +3563,27 @@ const DRILLS = [
     "ok": "Bb4 pins the knight to the king. It cannot legally move at all \u2014 that is an absolute pin (the Nimzo-Indian idea).",
     "wrong": {
      "f8e7": "Solid, but it pins nothing. Look for a diagonal that points at the king through the c3 knight."
+    },
+    "show": {
+     "f8b4": {
+      "a": [
+       [
+        "b4",
+        "e1",
+        "pin"
+       ]
+      ],
+      "m": [
+       [
+        "c3",
+        "pinned"
+       ],
+       [
+        "e1",
+        "key"
+       ]
+      ]
+     }
     }
    },
    {
@@ -689,6 +3596,27 @@ const DRILLS = [
     "ok": "Re2 pins the knight to the king along the e-file. It is frozen, and you can now pile up more pressure on it.",
     "wrong": {
      "h2h7": "The rook now attacks the knight along the 7th rank, but the king is not behind it, so it is not a pin."
+    },
+    "show": {
+     "h2e2": {
+      "a": [
+       [
+        "e2",
+        "e8",
+        "pin"
+       ]
+      ],
+      "m": [
+       [
+        "e7",
+        "pinned"
+       ],
+       [
+        "e8",
+        "key"
+       ]
+      ]
+     }
     }
    }
   ]
@@ -709,6 +3637,28 @@ const DRILLS = [
     "ok": "Rh8+ \u2014 the king must leave the 8th rank, and then Rxb8 wins the rook. That is a skewer.",
     "wrong": {
      "h2e2": "That is a check, but nothing stands behind the king on the e-file. A skewer needs a piece to win behind it."
+    },
+    "show": {
+     "h2h8": {
+      "a": [
+       [
+        "h8",
+        "e8",
+        "check"
+       ],
+       [
+        "h8",
+        "b8",
+        "skewer"
+       ]
+      ],
+      "m": [
+       [
+        "b8",
+        "target"
+       ]
+      ]
+     }
     }
    },
    {
@@ -721,6 +3671,28 @@ const DRILLS = [
     "ok": "Bb2+! The king has to move, and then the bishop takes the rook on h8. Attack from far away so the king cannot just capture you.",
     "wrong": {
      "c1h6": "The king simply captures the bishop on h6. Use the long diagonal from a distance."
+    },
+    "show": {
+     "c1b2": {
+      "a": [
+       [
+        "b2",
+        "g7",
+        "check"
+       ],
+       [
+        "b2",
+        "h8",
+        "skewer"
+       ]
+      ],
+      "m": [
+       [
+        "h8",
+        "target"
+       ]
+      ]
+     }
     }
    },
    {
@@ -733,6 +3705,28 @@ const DRILLS = [
     "ok": "Rd1+ and the king has to move off the d-file, so Rxd8 follows. The king was the front piece of the skewer.",
     "wrong": {
      "a1a5": "That is a check, but nothing is behind the king on the 5th rank. Find the line with a rook behind the king."
+    },
+    "show": {
+     "a1d1": {
+      "a": [
+       [
+        "d1",
+        "d5",
+        "check"
+       ],
+       [
+        "d1",
+        "d8",
+        "skewer"
+       ]
+      ],
+      "m": [
+       [
+        "d8",
+        "target"
+       ]
+      ]
+     }
     }
    }
   ]
@@ -752,7 +3746,32 @@ const DRILLS = [
     ],
     "hint": "Move the rook to the 8th rank.",
     "ok": "Ra8#! The king cannot step forward because its own pawns block it \u2014 the classic back-rank mate.",
-    "wrong": {}
+    "wrong": {},
+    "show": {
+     "a1a8": {
+      "a": [
+       [
+        "a8",
+        "g8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "f7",
+        "key"
+       ],
+       [
+        "g7",
+        "key"
+       ],
+       [
+        "h7",
+        "key"
+       ]
+      ]
+     }
+    }
    },
    {
     "fen": "7k/R7/8/8/8/8/1R6/4K3 w - - 0 1",
@@ -765,6 +3784,31 @@ const DRILLS = [
     "ok": "Rb8#! The rooks work like a ladder: one covers the 7th rank, the other gives check on the 8th.",
     "wrong": {
      "a7h7": "Check, but the king simply captures the undefended rook on h7."
+    },
+    "show": {
+     "b2b8": {
+      "a": [
+       [
+        "b8",
+        "h8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "g8",
+        "control"
+       ],
+       [
+        "g7",
+        "control"
+       ],
+       [
+        "h7",
+        "control"
+       ]
+      ]
+     }
     }
    },
    {
@@ -781,6 +3825,92 @@ const DRILLS = [
     "ok": "Checkmate! The queen is protected by the king and every escape square is covered.",
     "wrong": {
      "g6h7": "Check, but the king can capture on h7: nothing protects the queen there."
+    },
+    "show": {
+     "g6g7": {
+      "a": [
+       [
+        "g7",
+        "h8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "g8",
+        "control"
+       ],
+       [
+        "h7",
+        "control"
+       ]
+      ]
+     },
+     "g6g8": {
+      "a": [
+       [
+        "g8",
+        "h8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "g7",
+        "control"
+       ],
+       [
+        "h7",
+        "control"
+       ]
+      ]
+     },
+     "g6h5": {
+      "a": [
+       [
+        "h5",
+        "h8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "g8",
+        "control"
+       ],
+       [
+        "g7",
+        "control"
+       ],
+       [
+        "h7",
+        "control"
+       ]
+      ]
+     },
+     "g6h6": {
+      "a": [
+       [
+        "h6",
+        "h8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "g8",
+        "control"
+       ],
+       [
+        "g7",
+        "control"
+       ],
+       [
+        "h7",
+        "control"
+       ]
+      ]
+     }
     }
    },
    {
@@ -792,7 +3922,32 @@ const DRILLS = [
     ],
     "hint": "The knight jumps to f7, attacking h8.",
     "ok": "Nf7#! The king is smothered by its own rook and pawns, and a knight check cannot be blocked.",
-    "wrong": {}
+    "wrong": {},
+    "show": {
+     "g5f7": {
+      "a": [
+       [
+        "f7",
+        "h8",
+        "check"
+       ]
+      ],
+      "m": [
+       [
+        "g8",
+        "key"
+       ],
+       [
+        "g7",
+        "key"
+       ],
+       [
+        "h7",
+        "key"
+       ]
+      ]
+     }
+    }
    },
    {
     "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
@@ -805,6 +3960,32 @@ const DRILLS = [
     "ok": "Qxf7#! The pawn on f7 was only defended by the king, and the bishop protects the queen. Defend f7 early!",
     "wrong": {
      "h5h7": "Taking h7 is not check and leaves your queen loose. Look for the weak f7 square."
+    },
+    "show": {
+     "h5f7": {
+      "a": [
+       [
+        "f7",
+        "e8",
+        "check"
+       ],
+       [
+        "c4",
+        "f7",
+        "defend"
+       ]
+      ],
+      "m": [
+       [
+        "d8",
+        "key"
+       ],
+       [
+        "f8",
+        "key"
+       ]
+      ]
+     }
     }
    }
   ]
@@ -883,6 +4064,9 @@ const state = {
   prefs: { board: 'green', pieces: 'neo', engine: DEFAULT_LEVEL, sound: true, botColor: 'w', botLevel: 'easy', done: {} },
   learnSub: 'openings',
   learnOpening: null,
+  learnLine: 0,
+  learnFilter: 'all',
+  learnSide: null,
   analysisDepth: DEPTH,
   explore: null,
   exploreReq: 0,
@@ -910,7 +4094,7 @@ function pieceHtml(type, color, styleOverride) {
 function loadPrefs() {
   let raw = null;
   try {
-    raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS_V9) || lsGet(LEGACY_PREFS_V8) || lsGet(LEGACY_PREFS_V7) || lsGet(LEGACY_PREFS);
+    raw = lsGet(LS_PREFS) || lsGet(LEGACY_PREFS_V11) || lsGet(LEGACY_PREFS_V10) || lsGet(LEGACY_PREFS_V9) || lsGet(LEGACY_PREFS_V8) || lsGet(LEGACY_PREFS_V7) || lsGet(LEGACY_PREFS);
     const o = JSON.parse(raw || '{}');
     if (o && BOARD_THEMES.some((t) => t.id === o.board)) state.prefs.board = o.board;
     if (o && PIECE_STYLES.some((s) => s.id === o.pieces)) state.prefs.pieces = o.pieces;
@@ -919,7 +4103,7 @@ function loadPrefs() {
     if (o && (o.botColor === 'w' || o.botColor === 'b' || o.botColor === 'r')) state.prefs.botColor = o.botColor;
     if (o && /^[a-z]{3,12}$/.test(o.botLevel || '')) state.prefs.botLevel = o.botLevel;
     if (o && o.done && typeof o.done === 'object') {
-      Object.keys(o.done).forEach((k) => { if (/^[a-z]{2,20}$/.test(k) && o.done[k] === true) state.prefs.done[k] = true; });
+      Object.keys(o.done).forEach((k) => { if (/^[a-z0-9-]{2,40}$/.test(k) && o.done[k] === true) state.prefs.done[k] = true; });
     }
   } catch (e) { /* ignore */ }
   /* first run on modest hardware: start with the lightest preset */
@@ -955,7 +4139,7 @@ function saveProfiles() {
 function loadProfiles() {
   let list = [];
   let active = '';
-  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES_V9) || lsGet(LEGACY_PROFILES_V8) || lsGet(LEGACY_PROFILES_V7) || lsGet(LEGACY_PROFILES);
+  const raw = lsGet(LS_PROFILES) || lsGet(LEGACY_PROFILES_V11) || lsGet(LEGACY_PROFILES_V10) || lsGet(LEGACY_PROFILES_V9) || lsGet(LEGACY_PROFILES_V8) || lsGet(LEGACY_PROFILES_V7) || lsGet(LEGACY_PROFILES);
   try {
     if (raw) {
       const o = JSON.parse(raw);
@@ -1216,7 +4400,7 @@ function migrateCacheObj(raw) {
 function migrateStorage() {
   try {
     if (lsGet(LS_CACHE) === null) {
-      const v9 = lsGet(LEGACY_CACHE_V9);
+      const v9 = lsGet(LEGACY_CACHE_V11) || lsGet(LEGACY_CACHE_V10) || lsGet(LEGACY_CACHE_V9);
       if (v9) {
         lsSet(LS_CACHE, v9);
       } else {
@@ -1230,10 +4414,12 @@ function migrateStorage() {
   } catch (e) { /* ignore */ }
   try {
     if (lsGet(LS_LIB) === null) {
-      const oldLib = lsGet(LEGACY_LIB_V9) || lsGet(LEGACY_LIB_V8);
+      const oldLib = lsGet(LEGACY_LIB_V11) || lsGet(LEGACY_LIB_V10) || lsGet(LEGACY_LIB_V9) || lsGet(LEGACY_LIB_V8);
       if (oldLib) lsSet(LS_LIB, oldLib);
     }
   } catch (e) { /* ignore */ }
+  lsRemove(LEGACY_CACHE_V11);
+  lsRemove(LEGACY_CACHE_V10);
   lsRemove(LEGACY_CACHE_V9);
   lsRemove(LEGACY_CACHE_V8);
   lsRemove(LEGACY_CACHE_V7);
@@ -1241,10 +4427,10 @@ function migrateStorage() {
   lsRemove(LEGACY_CACHE);
 }
 function cleanupLegacyStorage() {
-  if (lsGet(LS_PREFS) !== null) { lsRemove(LEGACY_PREFS_V9); lsRemove(LEGACY_PREFS_V8); lsRemove(LEGACY_PREFS_V7); lsRemove(LEGACY_PREFS); }
-  if (lsGet(LS_PROFILES) !== null) { lsRemove(LEGACY_PROFILES_V9); lsRemove(LEGACY_PROFILES_V8); lsRemove(LEGACY_PROFILES_V7); lsRemove(LEGACY_PROFILES); lsRemove(LEGACY_USER); }
-  if (lsGet(LS_PGN) !== null) { lsRemove(LEGACY_PGN_V9); lsRemove(LEGACY_PGN_V8); lsRemove(LEGACY_PGN_V7); lsRemove(LEGACY_PGN_V6); lsRemove(LEGACY_PGN); }
-  if (lsGet(LS_LIB) !== null) { lsRemove(LEGACY_LIB_V9); lsRemove(LEGACY_LIB_V8); }
+  if (lsGet(LS_PREFS) !== null) { lsRemove(LEGACY_PREFS_V11); lsRemove(LEGACY_PREFS_V10); lsRemove(LEGACY_PREFS_V9); lsRemove(LEGACY_PREFS_V8); lsRemove(LEGACY_PREFS_V7); lsRemove(LEGACY_PREFS); }
+  if (lsGet(LS_PROFILES) !== null) { lsRemove(LEGACY_PROFILES_V11); lsRemove(LEGACY_PROFILES_V10); lsRemove(LEGACY_PROFILES_V9); lsRemove(LEGACY_PROFILES_V8); lsRemove(LEGACY_PROFILES_V7); lsRemove(LEGACY_PROFILES); lsRemove(LEGACY_USER); }
+  if (lsGet(LS_PGN) !== null) { lsRemove(LEGACY_PGN_V11); lsRemove(LEGACY_PGN_V10); lsRemove(LEGACY_PGN_V9); lsRemove(LEGACY_PGN_V8); lsRemove(LEGACY_PGN_V7); lsRemove(LEGACY_PGN_V6); lsRemove(LEGACY_PGN); }
+  if (lsGet(LS_LIB) !== null) { lsRemove(LEGACY_LIB_V11); lsRemove(LEGACY_LIB_V10); lsRemove(LEGACY_LIB_V9); lsRemove(LEGACY_LIB_V8); }
 }
 
 /* =====================================================================
@@ -1252,7 +4438,7 @@ function cleanupLegacyStorage() {
    ===================================================================== */
 function loadLibrary() {
   try {
-    const o = JSON.parse(lsGet(LS_LIB) || lsGet(LEGACY_LIB_V9) || lsGet(LEGACY_LIB_V8) || '[]');
+    const o = JSON.parse(lsGet(LS_LIB) || lsGet(LEGACY_LIB_V11) || lsGet(LEGACY_LIB_V10) || lsGet(LEGACY_LIB_V9) || lsGet(LEGACY_LIB_V8) || '[]');
     state.library = Array.isArray(o)
       ? o.filter((e) => e && typeof e.id === 'string' && typeof e.pgn === 'string').slice(0, MAX_LIBRARY)
       : [];
@@ -2017,7 +5203,10 @@ function drawHead(tipX, tipY, dirX, dirY) {
     (baseX - px * halfW).toFixed(3) + ',' + (baseY - py * halfW).toFixed(3) + '"/>';
 }
 
-function arrowSvg(from, to) {
+function arrowSvg(from, to, color, dash) {
+  const col = color || '#ffb02e';
+  const dsh = dash ? ' stroke-dasharray=".2 .15"' : '';
+  const cap = dash ? 'butt' : 'round';
   const a = sqXY(from);
   const b = sqXY(to);
   const dx = b.x - a.x;
@@ -2050,8 +5239,8 @@ function arrowSvg(from, to) {
     const dPath = 'M ' + sx.toFixed(3) + ' ' + sy.toFixed(3) +
                   ' L ' + elbowX.toFixed(3) + ' ' + elbowY.toFixed(3) +
                   ' L ' + shaftEndX.toFixed(3) + ' ' + shaftEndY.toFixed(3);
-    return '<g opacity=".9" fill="#ffb02e" stroke="#ffb02e">' +
-      '<path fill="none" d="' + dPath + '" stroke-width=".17" stroke-linecap="round" stroke-linejoin="round"/>' +
+    return '<g opacity=".9" fill="' + col + '" stroke="' + col + '">' +
+      '<path fill="none" d="' + dPath + '" stroke-width=".17" stroke-linecap="' + cap + '" stroke-linejoin="round"' + dsh + '/>' +
       drawHead(tipX, tipY, dirX, dirY) + '</g>';
   }
 
@@ -2064,8 +5253,8 @@ function arrowSvg(from, to) {
   const baseY = tipY - uy * 0.36;
   const sx = a.x + ux * 0.18;
   const sy = a.y + uy * 0.18;
-  return '<g opacity=".85" fill="#ffb02e" stroke="#ffb02e">' +
-    '<line x1="' + sx.toFixed(3) + '" y1="' + sy.toFixed(3) + '" x2="' + baseX.toFixed(3) + '" y2="' + baseY.toFixed(3) + '" stroke-width=".17" stroke-linecap="round"/>' +
+  return '<g opacity=".85" fill="' + col + '" stroke="' + col + '">' +
+    '<line x1="' + sx.toFixed(3) + '" y1="' + sy.toFixed(3) + '" x2="' + baseX.toFixed(3) + '" y2="' + baseY.toFixed(3) + '" stroke-width=".17" stroke-linecap="' + cap + '"' + dsh + '/>' +
     drawHead(tipX, tipY, ux, uy) + '</g>';
 }
 
@@ -3527,6 +6716,7 @@ function openSession(L) {
   state.lesson = L;
   state.flipped = !!L.flip;
   render();
+  scrollBoardIntoView();
 }
 
 function closeLesson() {
@@ -3561,6 +6751,7 @@ function applyTo(L, from, to, promo) {
 function popMove(L) {
   const m = L.moves.pop();
   L.fens.pop();
+  if (L.tis) L.tis.pop();
   L.idx = L.moves.length;
   if (m) state.anim = moveAnim(m, true);
   return m;
@@ -3595,13 +6786,17 @@ function sessionOverlay() {
   const L = state.lesson;
   let h = '';
   const arrow = (uci) => ((uci && uci.length >= 4) ? arrowSvg(uci.slice(0, 2), uci.slice(2, 4)) : '');
-  if (L.kind === 'practice') {
+  if (L.kind === 'study') {
+    h += studyViz(L);
+  } else if (L.kind === 'practice') {
     if (L.hint && L.status === 'line') {
-      const t = L.th.moves[L.moves.length];
+      const ti = pTi(L);
+      const t = ti != null ? L.th.moves[ti] : null;
       if (t) h += arrow(t.from + t.to);
     }
   } else if (L.kind === 'drill') {
     if (L.hint && !L.solved && !L.finished) h += arrow(L.def.steps[L.step].accept[0]);
+    if (L.solved) h += vizSvg(drillShow(L));
   } else if (L.kind === 'bot') {
     const a = L.evals[L.fens[L.idx]];
     if (L.hint && a && a.best && sessionCanMove(L)) h += arrow(a.best);
@@ -3648,21 +6843,30 @@ function sessionEval(L, fen, lv) {
   return p;
 }
 
-/* =====================================================================
-   Openings: lines, study, practice
-   ===================================================================== */
+/* ---------- Openings: lines (main + variations), study, practice ---------- */
+/* arrow kinds: threat = attack / capture threat, defend = protects, idea = control of a square, plan = move to come,
+   pin / skewer = dashed lines through a piece, fork = one piece attacking two, check = attack on the king */
+const VIZ_COLOR = { threat: '#e0453a', defend: '#4aa3df', idea: '#81b64c', plan: '#ffa133', pin: '#a66de0', skewer: '#ff5fa2', fork: '#1fc2b0', check: '#ffd400' };
+const VIZ_NAME = { threat: 'threat', defend: 'defended', idea: 'control', plan: 'plan', pin: 'pin', skewer: 'skewer', fork: 'fork', check: 'check' };
+const MARK_COLOR = { target: '#e0453a', key: '#ffa133', defend: '#4aa3df', pinned: '#a66de0', control: '#1fc2b0' };
+
 function lineOf(def, vi) {
-  if (!vi) return { name: def.name, moves: def.moves, notes: def.notes, prefix: -1, note: def.blurb };
+  if (!vi) return { vi: 0, name: def.name, moves: def.moves, notes: def.notes, ext: def.ext || {}, prefix: -1, note: def.blurb };
   const v = def.variants[vi - 1];
   const a = def.moves.split(/\s+/).filter(Boolean);
   const b = v.moves.split(/\s+/).filter(Boolean);
   let p = 0;
   while (p < a.length && p < b.length && a[p] === b[p]) p++;
   const notes = b.map((_, i) => (i < p ? def.notes[i] : ((v.n && v.n[i]) || null)));
-  return { name: v.name, moves: v.moves, notes, prefix: p, note: v.note };
+  const ext = {};
+  b.forEach((_, i) => {
+    const e = i < p ? (def.ext && def.ext[i]) : (v.ext && v.ext[i]);
+    if (e) ext[i] = e;
+  });
+  return { vi, name: v.name, moves: v.moves, notes, ext, prefix: p, note: v.note };
 }
 
-function buildLesson(def, vi) {
+function buildLesson(def, vi, side) {
   const line = lineOf(def, vi || 0);
   const ch = new Chess();
   const fens = [ch.fen()];
@@ -3682,13 +6886,32 @@ function buildLesson(def, vi) {
     if (nm) cur = nm;
     names.push(cur);
   }
-  return { kind: 'study', def, vi: vi || 0, line, fens, moves, names, notes: line.notes, prefix: line.prefix, idx: 0, flip: def.side === 'b' };
+  return {
+    kind: 'study', def, vi: vi || 0, line, fens, moves, names, notes: line.notes, ext: line.ext, prefix: line.prefix,
+    keys: fens.map(posKey), idx: 0, side: side || def.side, flip: (side || def.side) === 'b'
+  };
 }
 
-function startLesson(id, vi) {
+function startLesson(id, vi, side) {
   const def = OPENINGS.find((o) => o.id === id);
   if (!def) return;
-  openSession(buildLesson(def, vi || 0));
+  openSession(buildLesson(def, vi || 0, side || def.side));
+}
+
+/* switch the line while studying: stay on the same position when it is shared by both lines */
+function studySwitch(L, vi) {
+  if (L.vi === vi) return;
+  const nl = buildLesson(L.def, vi, L.side);
+  let j = 0;
+  while (j <= L.idx && j < nl.keys.length && nl.keys[j] === L.keys[j]) j++;
+  nl.idx = Math.max(0, Math.min(L.idx, j - 1));
+  nl.prevFlipped = L.prevFlipped;
+  nl.id = L.id;
+  nl.evals = {};
+  killSession(L);
+  state.lesson = nl;
+  render();
+  scrollBoardIntoView();
 }
 
 function lessonGo(i) {
@@ -3706,6 +6929,7 @@ function lessonGo(i) {
     state.anim = moveAnim(L.moves[np], true);
   }
   render();
+  scrollBoardIntoView();
 }
 
 /* nav buttons while a session is open */
@@ -3722,60 +6946,143 @@ function lessonNav(dir) {
   }
 }
 
-function startPractice(id, vi) {
+/* rings + arrows that illustrate the commentary. Rings (not fills) keep the yellow last-move squares visible. */
+function vizSvg(e) {
+  if (!e) return '';
+  let h = '';
+  (e.m || []).forEach((x) => {
+    const p = sqXY(x[0]);
+    const c = MARK_COLOR[x[1]] || MARK_COLOR.key;
+    h += '<rect x="' + (p.x - 0.465).toFixed(3) + '" y="' + (p.y - 0.465).toFixed(3) + '" width=".93" height=".93" rx=".06" fill="' + c +
+      '" fill-opacity=".2" stroke="' + c + '" stroke-width=".07" stroke-opacity=".9"/>';
+  });
+  (e.a || []).forEach((x) => { h += arrowSvg(x[0], x[1], VIZ_COLOR[x[2]] || VIZ_COLOR.plan, x[2] === 'pin' || x[2] === 'skewer'); });
+  return h;
+}
+
+function studyViz(L) {
+  return vizSvg(L.idx > 0 ? L.ext[L.idx - 1] : null);
+}
+
+/* illustration of the move just played in an interactive lesson */
+function drillShow(L) {
+  const st = L.def.steps[L.step];
+  const m = L.moves[L.moves.length - 1];
+  if (!st || !st.show || !m) return null;
+  return st.show[m.from + m.to + (m.promotion || '')] || null;
+}
+
+/* keeps the board in view on phones: the cards below it are long, and pressing Next/Prev would otherwise leave it scrolled away */
+function scrollBoardIntoView() {
+  const m = $('#main');
+  const bc = document.querySelector('.board-col');
+  if (!m || !bc) return;
+  const r = bc.getBoundingClientRect();
+  const mr = m.getBoundingClientRect();
+  if (r.top < mr.top - 1) m.scrollTop += r.top - mr.top;
+}
+
+/* ---------- Practice: any line of the opening is accepted ---------- */
+function markPracticed(L) {
+  state.prefs.done = state.prefs.done || {};
+  state.prefs.done['op-' + L.def.id + '-' + L.vi + '-' + L.userColor] = true;
+  savePrefs();
+}
+function openingDone(id, vi) {
+  const d = state.prefs.done || {};
+  if (vi == null) return Object.keys(d).some((k) => k.indexOf('op-' + id + '-') === 0);
+  return !!(d['op-' + id + '-' + vi + '-w'] || d['op-' + id + '-' + vi + '-b']);
+}
+function pTi(L) { return L.tis[L.idx]; }   /* index of the current position inside the theory line (null = off book) */
+
+function startPractice(id, vi, side) {
   const def = OPENINGS.find((o) => o.id === id);
   if (!def) return;
-  const th = buildLesson(def, vi || 0);
+  const lines = [];
+  const color = side || def.side;
+  for (let i = 0; i <= def.variants.length; i++) lines.push(buildLesson(def, i, color));
   const ch = new Chess();
   const L = {
-    kind: 'practice', def, vi: vi || 0, th, fens: [ch.fen()], moves: [], idx: 0,
-    userColor: def.side, flip: def.side === 'b', status: 'line', mistakes: 0, hints: 0,
+    kind: 'practice', def, lines, startVi: vi || 0, vi: vi || 0, th: lines[vi || 0],
+    fens: [ch.fen()], moves: [], idx: 0, tis: [0],
+    userColor: color, flip: color === 'b', status: 'line', mistakes: 0, hints: 0,
     hint: false, fb: null, reply: null
   };
   openSession(L);
-  if (def.side === 'b') scheduleReply(L, 500);
+  if (color === 'b') scheduleReply(L, 500);
 }
 
 function scheduleReply(L, ms) {
   clearTimeout(L.timer);
   L.timer = setTimeout(() => {
     if (state.lesson !== L || L.dead || L.status !== 'line') return;
-    const i = L.moves.length;
-    const t = L.th.moves[i];
+    const ti = pTi(L);
+    const t = ti != null ? L.th.moves[ti] : null;
     if (!t) return;
     const m = applyTo(L, t.from, t.to, t.promotion);
     if (!m) return;
-    L.reply = { san: m.san, note: L.th.notes[i] };
-    if (L.moves.length >= L.th.moves.length) L.status = 'done';
+    L.tis.push(ti + 1);
+    L.reply = { san: m.san, note: L.th.notes[ti], ext: L.th.ext[ti] };
+    if (ti + 1 >= L.th.moves.length) { L.status = 'done'; markPracticed(L); }
     render();
+    scrollBoardIntoView();
   }, ms);
 }
 
 function practiceMove(L, from, to, promo) {
-  const i = L.moves.length;
-  const exp = L.th.moves[i];
+  const ti0 = pTi(L);
   const fenBefore = L.fens[L.idx];
+  const exp = ti0 != null ? L.th.moves[ti0] : null;
   const m = applyTo(L, from, to, promo);
   if (!m) return false;
   L.hint = false;
   L.reply = null;
-  const same = !!exp && exp.from === m.from && exp.to === m.to && (exp.promotion || '') === (m.promotion || '');
-  if (same) {
-    L.fb = { ok: true, san: m.san, note: L.th.notes[i], name: L.th.names[i + 1] };
-    if (L.moves.length >= L.th.moves.length) L.status = 'done';
+  const key = posKey(L.fens[L.idx]);
+  const k = L.moves.length;
+
+  /* 1) the next move of the current line  2) another line at the same ply (a variation)
+     3) a position that belongs to any line (a transposition) */
+  let hit = null;
+  if (ti0 != null && L.th.keys[ti0 + 1] === key) hit = { line: L.th, j: ti0 + 1, how: 'line' };
+  if (!hit) {
+    for (const ln of L.lines) {
+      if (ln !== L.th && ln.keys[k] === key) { hit = { line: ln, j: k, how: 'variation' }; break; }
+    }
+  }
+  if (!hit) {
+    for (const ln of L.lines) {
+      const j = ln.keys.indexOf(key);
+      if (j > 0) { hit = { line: ln, j, how: 'transposition' }; break; }
+    }
+  }
+
+  if (hit) {
+    const ln = hit.line;
+    const switched = ln !== L.th;
+    L.th = ln;
+    L.vi = ln.vi;
+    L.tis.push(hit.j);
+    L.fb = {
+      ok: true, san: m.san, note: ln.notes[hit.j - 1], ext: ln.ext[hit.j - 1],
+      name: ln.names[hit.j] || (hit.j >= (L.def.nameFrom || 2) ? L.def.name : null),
+      via: switched ? { how: hit.how, name: ln.line.name } : null
+    };
+    if (hit.j >= ln.moves.length) { L.status = 'done'; markPracticed(L); }
     else scheduleReply(L, 550);
   } else {
     L.status = 'off';
     L.mistakes++;
+    L.tis.push(null);
     const bk = ensureBook();
-    const key = posKey(L.fens[L.idx]);
     L.fb = {
-      ok: false, san: m.san, exp: exp ? exp.san : null, expNote: L.th.notes[i],
+      ok: false, san: m.san, exp: exp ? exp.san : null,
+      expNote: exp ? L.th.notes[ti0] : null, expExt: exp ? L.th.ext[ti0] : null,
       book: bk.keys.has(key) ? (bk.names.get(key) || 'another known line') : null, eng: null
     };
     explainDeviation(L, fenBefore, L.fens[L.idx]);
   }
   render();
+  scrollBoardIntoView();
   return true;
 }
 
@@ -3788,7 +7095,7 @@ async function explainDeviation(L, fenB, fenA) {
     const sgn = L.userColor === 'w' ? 1 : -1;
     const loss = Math.max(0, winPct(a0.cp * sgn) - winPct(a1.cp * sgn));
     let t;
-    if (loss < 4) t = 'The engine still likes this move: it is playable, just not the line you are practicing.';
+    if (loss < 4) t = 'The engine still likes this move: it is playable, just not part of the line you are practicing.';
     else if (loss < 10) t = 'The engine finds it slightly worse than the book move.';
     else if (loss < 20) t = 'The engine considers it a real mistake.';
     else t = 'The engine considers it a serious mistake.';
@@ -3807,30 +7114,49 @@ function practiceUndo(L) {
   L.fb = null;
   L.reply = null;
   L.hint = false;
-  if (L.def.side === 'b' && L.moves.length === 0) scheduleReply(L, 500);
+  const ti = pTi(L);
+  if (ti != null && L.moves.length > 0) {
+    /* the line we were following may have changed: re-anchor on the line that contains this position */
+    const key = posKey(L.fens[L.idx]);
+    if (L.th.keys[ti] !== key) {
+      for (const ln of L.lines) { const j = ln.keys.indexOf(key); if (j >= 0) { L.th = ln; L.vi = ln.vi; L.tis[L.idx] = j; break; } }
+    }
+  }
+  if (L.userColor === 'b' && L.moves.length === 0) scheduleReply(L, 500);
   render();
+  scrollBoardIntoView();
 }
 
 function practiceShow(L) {
-  const i = L.moves.length - (L.status === 'off' ? 1 : 0);
-  const t = L.th.moves[i];
-  if (!t) return;
   if (L.status === 'off') { popMove(L); L.status = 'line'; L.fb = null; }
+  const ti = pTi(L);
+  const t = ti != null ? L.th.moves[ti] : null;
+  if (!t) return;
   const m = applyTo(L, t.from, t.to, t.promotion);
   if (!m) return;
-  L.fb = { ok: true, san: m.san, note: L.th.notes[i], name: L.th.names[i + 1], shown: true };
-  if (L.moves.length >= L.th.moves.length) L.status = 'done';
+  L.tis.push(ti + 1);
+  L.fb = { ok: true, san: m.san, note: L.th.notes[ti], ext: L.th.ext[ti], name: L.th.names[ti + 1], shown: true };
+  if (ti + 1 >= L.th.moves.length) L.status = 'done';
   else scheduleReply(L, 550);
   render();
+  scrollBoardIntoView();
 }
 
 function practiceRestart(L) {
   clearTimeout(L.timer);
   const ch = new Chess();
-  L.fens = [ch.fen()]; L.moves = []; L.idx = 0;
+  L.fens = [ch.fen()]; L.moves = []; L.idx = 0; L.tis = [0];
+  L.th = L.lines[L.startVi]; L.vi = L.startVi;
   L.status = 'line'; L.mistakes = 0; L.hints = 0; L.hint = false; L.fb = null; L.reply = null;
   render();
-  if (L.def.side === 'b') scheduleReply(L, 500);
+  scrollBoardIntoView();
+  if (L.userColor === 'b') scheduleReply(L, 500);
+}
+
+function practiceSwitchLine(L, vi) {
+  if (vi === L.vi && L.moves.length === 0) return;
+  L.startVi = vi;
+  practiceRestart(L);
 }
 
 /* =====================================================================
@@ -4158,20 +7484,54 @@ function lineSan(def, vi) {
   } catch (e) { return ''; }
 }
 
+/* ---------- Learn > Openings: grouped by color, filter, side picker ---------- */
+function sideKind(o) { return o.sides.length > 1 ? 'x' : o.sides[0]; }
+
+function sideBadgeFor(o) {
+  const k = sideKind(o);
+  return '<span class="side-badge ' + k + '">' + (k === 'x' ? 'Both' : (k === 'w' ? 'White' : 'Black')) + '</span>';
+}
+
+function lineSan(def, vi) {
+  try {
+    const th = buildLesson(def, vi, def.side);
+    return sanLine(START_FEN, th.moves.map((m) => m.san));
+  } catch (e) { return ''; }
+}
+
 function openingDetailHtml(o) {
+  const vi = clamp(state.learnLine || 0, 0, o.variants.length);
+  const ln = lineOf(o, vi);
+  const side = (state.learnSide && o.sides.indexOf(state.learnSide) >= 0) ? state.learnSide : o.side;
   let h = '<div class="gl-head"><button class="btn ghost small" data-learn-back>\u2190 All openings</button></div>';
-  h += '<h3 class="od-title">' + esc(o.name) + ' <span class="gres lside">' + (o.side === 'w' ? 'White' : 'Black') + '</span></h3>';
-  h += '<p class="od-p"><b>The idea.</b> ' + esc(o.idea) + '</p>';
-  h += '<h4 class="od-h">Typical threats &amp; tricks</h4><ul class="od-list">' + o.threats.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul>';
-  h += '<h4 class="od-h">Lines</h4>';
-  for (let vi = 0; vi <= o.variants.length; vi++) {
-    const ln = lineOf(o, vi);
-    h += '<div class="od-line"><b>' + esc(vi === 0 ? 'Main line \u00B7 ' + ln.name : ln.name) + '</b><small>' + esc(vi === 0 ? 'The classic setup, move by move.' : ln.note) + '</small>' +
-      '<code>' + esc(lineSan(o, vi)) + '</code>' +
-      '<div class="row gap"><button class="btn ghost small grow" data-study="' + o.id + ':' + vi + '">Study</button>' +
-      '<button class="btn primary small grow" data-practice="' + o.id + ':' + vi + '">Practice</button></div></div>';
+  h += '<div class="od-head"><h3 class="od-title">' + esc(o.name) + (openingDone(o.id) ? ' <span class="chk-done">\u2713</span>' : '') + '</h3>' + sideBadgeFor(o) + '</div>';
+  h += '<p class="od-tag">' + esc(o.tagline) + '</p>';
+  h += '<div class="chips"><span class="chip lvl">' + esc(o.level) + '</span><span class="chip">' + esc(o.style) + '</span><span class="chip ln">' + (o.variants.length + 1) + ' lines</span></div>';
+  h += calloutHtml('idea', 'The idea', o.idea);
+  h += '<div class="callout threat"><b>Typical threats &amp; tricks</b><ul>' + o.threats.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul></div>';
+  if (o.sides.length > 1) {
+    h += '<h4 class="od-h">You play</h4><div class="pills" role="tablist" aria-label="Side">' +
+      o.sides.map((c) => '<button class="pill' + (c === side ? ' on' : '') + '" role="tab" aria-selected="' + (c === side) + '" data-learn-side="' + c + '">' +
+        '<span class="dot ' + c + '"></span>' + (c === 'w' ? 'White' : 'Black') + '</button>').join('') + '</div>';
+  } else {
+    h += '<p class="tip" style="margin-top:10px">This opening is played with <b>' + (o.side === 'w' ? 'White' : 'Black') + '</b>.</p>';
   }
+  h += '<h4 class="od-h">Choose a line</h4>' + pillsHtml(o, vi, 'data-learn-line');
+  h += '<div class="od-line"><b>' + esc(vi === 0 ? 'Main line \u00B7 ' + ln.name : ln.name) + '</b>' +
+    '<small>' + esc(vi === 0 ? 'The classic setup, move by move.' : ln.note) + '</small>' +
+    '<code>' + esc(lineSan(o, vi)) + '</code></div>';
+  h += '<div class="stage-btns"><button class="btn primary big" data-study="' + o.id + ':' + vi + ':' + side + '"><span class="n">1</span> Study this line</button>' +
+    '<button class="btn ghost big" data-practice="' + o.id + ':' + vi + ':' + side + '"><span class="n">2</span> Practice this line</button></div>' +
+    '<p class="tip">Study first: commentary, threats and arrows for every move. Then practice it on the board.</p>';
   return h;
+}
+
+function openingCardHtml(o) {
+  return '<button class="ocard" data-opening="' + esc(o.id) + '">' +
+    '<span class="ocard-top"><b>' + esc(o.name) + (openingDone(o.id) ? ' <span class="chk-done">\u2713</span>' : '') + '</b>' + sideBadgeFor(o) + '</span>' +
+    '<span class="ocard-tag">' + esc(o.tagline) + '</span>' +
+    '<span class="chips"><span class="chip lvl">' + esc(o.level) + '</span><span class="chip">' + esc(o.style) + '</span>' +
+    '<span class="chip ln">' + (o.variants.length + 1) + ' lines</span></span></button>';
 }
 
 function renderLearnTab() {
@@ -4187,17 +7547,26 @@ function renderLearnTab() {
   so.hidden = sub !== 'openings';
   sl.hidden = sub !== 'lessons';
   const det = state.learnOpening ? OPENINGS.find((o) => o.id === state.learnOpening) : null;
+  $('#learn-intro').hidden = !!det;
+  $('#learn-filter').hidden = !!det;
   $('#learn-list').hidden = !!det;
   $('#learn-detail').hidden = !det;
   if (det) {
     $('#learn-detail').innerHTML = openingDetailHtml(det);
   } else {
-    $('#learn-list').innerHTML = OPENINGS.map((o) =>
-      '<button class="game lesson-item" data-opening="' + esc(o.id) + '">' +
-      '<span class="gcol ' + o.side + '"></span>' +
-      '<span class="gmain"><b>' + esc(o.name) + '</b><small>' + esc(o.blurb) + '</small></span>' +
-      '<span class="gres lside">' + (o.side === 'w' ? 'White' : 'Black') + '</span></button>'
-    ).join('');
+    const groups = [
+      { key: 'w', title: 'Play as White', test: (o) => o.sides.length === 1 && o.sides[0] === 'w' },
+      { key: 'b', title: 'Play as Black', test: (o) => o.sides.length === 1 && o.sides[0] === 'b' },
+      { key: 'both', title: 'Either color', test: (o) => o.sides.length > 1 }
+    ];
+    const f = state.learnFilter;
+    const filters = [['all', 'All', OPENINGS.length]].concat(groups.map((g) => [g.key, g.key === 'w' ? 'White' : (g.key === 'b' ? 'Black' : 'Both'), OPENINGS.filter(g.test).length]));
+    $('#learn-filter').innerHTML = filters.map((x) =>
+      '<button class="pill' + (f === x[0] ? ' on' : '') + '" role="tab" aria-selected="' + (f === x[0]) + '" data-learn-filter="' + x[0] + '">' + x[1] + ' <span class="cnt">' + x[2] + '</span></button>').join('');
+    $('#learn-list').innerHTML = groups.filter((g) => f === 'all' || f === g.key).map((g) => {
+      const list = OPENINGS.filter(g.test);
+      return list.length ? '<h4 class="od-group">' + g.title + '</h4>' + list.map(openingCardHtml).join('') : '';
+    }).join('');
   }
   const done = state.prefs.done || {};
   $('#drill-list').innerHTML = DRILLS.map((d) =>
@@ -4223,15 +7592,19 @@ function cardAction(t) {
   const L = state.lesson;
   const is = (sel) => !!t.closest(sel);
   if (is('[data-lesson-restart]')) { lessonGo(0); return; }
+  if (is('[data-study-prev]')) { lessonNav('prev'); return; }
+  if (is('[data-study-next]')) { lessonNav('next'); return; }
+  if (L && L.kind === 'study' && is('[data-line-switch]')) { studySwitch(L, +t.closest('[data-line-switch]').dataset.lineSwitch); return; }
+  if (L && L.kind === 'practice' && is('[data-practice-line]')) { practiceSwitchLine(L, +t.closest('[data-practice-line]').dataset.practiceLine); return; }
   if (is('[data-open-lessons]')) { state.learnSub = 'lessons'; state.learnOpening = null; openSheet('learn'); return; }
   if (is('[data-bot-new]')) { openSheet('play'); return; }
   if (!L) return;
-  if (is('[data-study-practice]')) { startPractice(L.def.id, L.vi); return; }
+  if (is('[data-study-practice]')) { startPractice(L.def.id, L.vi, L.side); return; }
   if (is('[data-practice-hint]')) { L.hint = true; L.hints++; renderOverlay(); renderCard(); return; }
   if (is('[data-practice-undo]')) { practiceUndo(L); return; }
   if (is('[data-practice-show]')) { practiceShow(L); return; }
   if (is('[data-practice-restart]')) { practiceRestart(L); return; }
-  if (is('[data-practice-study]')) { startLesson(L.def.id, L.vi); return; }
+  if (is('[data-practice-study]')) { startLesson(L.def.id, L.vi, L.userColor); return; }
   if (is('[data-drill-hint]')) { L.hint = true; renderOverlay(); renderCard(); return; }
   if (is('[data-drill-next]')) { drillNext(); return; }
   if (is('[data-drill-restart]')) { drillRestart(L); return; }
@@ -4300,81 +7673,141 @@ function progressBar(frac) {
   return '<div class="bar lbar"><i style="width:' + Math.round(clamp(frac, 0, 1) * 100) + '%"></i></div>';
 }
 
+/* ---------- small building blocks for the opening cards ---------- */
+function stagesHtml(stage) {
+  return '<div class="stages" aria-label="Learning stages">' +
+    '<span class="stage ' + (stage === 1 ? 'on' : 'done') + '">1 \u00B7 Study line</span>' +
+    '<span class="stage ' + (stage === 2 ? 'on' : '') + '">2 \u00B7 Practice line</span></div>';
+}
+
+function pillsHtml(def, active, attr) {
+  let h = '<div class="pills" role="tablist" aria-label="Line">';
+  for (let vi = 0; vi <= def.variants.length; vi++) {
+    h += '<button class="pill' + (vi === active ? ' on' : '') + '" role="tab" aria-selected="' + (vi === active) + '" ' + attr + '="' + vi + '">' +
+      esc(vi === 0 ? 'Main line' : def.variants[vi - 1].name) + (openingDone(def.id, vi) ? ' \u2713' : '') + '</button>';
+  }
+  return h + '</div>';
+}
+
+/* "Why Bc4: the bishop..." -> "The bishop..." (the callout title already says why) */
+function whyText(w) {
+  const t = String(w || '').replace(/^Why [^:]{1,30}:\s*/, '');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function calloutHtml(kind, title, body, sub) {
+  return '<div class="callout ' + kind + '"><b>' + title + '</b><p>' + esc(body) + '</p>' +
+    (sub ? '<p class="sub">' + esc(sub) + '</p>' : '') + '</div>';
+}
+
+function legendHtml(e) {
+  if (!e || !e.a || !e.a.length) return '';
+  const kinds = {};
+  e.a.forEach((x) => { kinds[x[2]] = 1; });
+  const dashed = (k) => (k === 'pin' || k === 'skewer');
+  let chips = Object.keys(kinds).map((k) =>
+    '<span><i style="background:' + (dashed(k) ? 'repeating-linear-gradient(90deg,' + VIZ_COLOR[k] + ' 0 5px,transparent 5px 8px)' : VIZ_COLOR[k]) + '"></i>' + (VIZ_NAME[k] || k) + '</span>').join('');
+  if ((e.m || []).some((x) => x[1] === 'pinned')) chips += '<span><i class="ring" style="border-color:' + MARK_COLOR.pinned + '"></i>pinned piece</span>';
+  return '<p class="legend">' + chips + '</p>';
+}
+
 function studyCardHtml(L) {
   const def = L.def;
   const total = L.moves.length;
   const i = L.idx;
-  const sideName = def.side === 'w' ? 'White' : 'Black';
-  let h = '';
+  const sideName = L.side === 'w' ? 'White' : 'Black';
+  let h = stagesHtml(1) + pillsHtml(def, L.vi, 'data-line-switch');
   if (i === 0) {
     h += '<div class="card-head"><div class="badge-lg lesson">\u265E' + TEXT_VS + '</div><div class="card-title">' + esc(def.name) +
       '<small style="color:var(--accent)">' + esc(L.vi ? L.line.name : 'Main line') + ' \u00B7 you play ' + sideName + '</small></div></div>';
-    h += '<p class="card-text"><b>The idea.</b> ' + esc(def.idea) + '</p>';
-    h += '<p class="tip" style="margin-top:8px"><b>Watch out for:</b> ' + esc(def.threats[0]) + '</p>';
-    h += '<p class="card-text" style="margin-top:8px">Press <b>&gt;</b> to play through the line one move at a time (' + total + ' moves).</p>';
+    h += calloutHtml('idea', 'The idea', def.idea);
+    h += '<div class="callout threat"><b>Typical threats &amp; tricks</b><ul>' + def.threats.map((t) => '<li>' + esc(t) + '</li>').join('') + '</ul></div>';
+    h += '<p class="tip" style="margin-top:10px">Press <b>Next</b> to walk through the ' + total + ' moves. Arrows and colored squares on the board show the threats mentioned.</p>';
   } else {
     const m = L.moves[i - 1];
+    const e = L.ext[i - 1] || {};
     const num = Math.ceil(i / 2);
     const white = m.color === 'w';
     h += '<div class="card-head"><div class="badge-lg lesson">' + num + '</div><div class="card-title">' + esc(m.san) +
-      '<small style="color:var(--muted)">Move ' + num + (white ? '' : '\u2026') + ' \u00B7 ' + (white ? 'White' : 'Black') + '</small></div></div>';
-    h += '<p class="card-text">' + esc((L.notes && L.notes[i - 1]) ||
-      describeMove({ move: m, prev: i > 1 ? L.moves[i - 2] : null, color: m.color })) + '</p>';
+      '<small style="color:var(--muted)">Move ' + num + (white ? '' : '\u2026') + ' \u00B7 ' + (white ? 'White' : 'Black') + ' \u00B7 ' + i + '/' + total + '</small></div></div>';
+    h += calloutHtml('idea', 'The idea', (L.notes && L.notes[i - 1]) ||
+      describeMove({ move: m, prev: i > 1 ? L.moves[i - 2] : null, color: m.color }));
+    if (e.t) h += calloutHtml('threat', 'Threats', e.t);
+    if (e.w) h += calloutHtml('why', white ? 'Why White plays it' : 'Why Black plays it', whyText(e.w));
+    h += legendHtml(e);
     if (L.vi && L.prefix >= 0 && i - 1 === L.prefix) {
       h += '<p class="note" style="color:#ffb02e">Variation starts here: ' + esc(L.line.name) + '.</p>';
     }
-    const nm = L.names[i];
+    const nm = L.names[i] || (i >= (def.nameFrom || 2) ? def.name : null);
     if (nm) {
       h += '<div class="hint"><span class="swatch" style="background:' + CLS.book.color + '"></span>Opening: <b style="color:#d2a679">' + esc(nm) + '</b></div>';
     }
   }
   h += progressBar(i / Math.max(1, total));
-  if (i === total) {
-    h += '<p class="note" style="color:#d2a679">Line complete \u2014 from here the game branches into many plans. Now try to play it yourself.</p>' +
-      '<div class="btnrow"><button class="btn primary" data-study-practice>Practice this line</button>' +
-      '<button class="btn ghost" data-lesson-restart>Replay</button></div>';
-  }
+  const end = i >= total;
+  h += '<div class="ctl-grid"><button class="btn ghost big" data-study-prev' + (i <= 0 ? ' disabled' : '') + '>\u2039 Prev</button>' +
+    '<button class="btn primary big" data-study-next' + (end ? ' disabled' : '') + '>Next \u203A</button></div>' +
+    '<div class="ctl-grid"><button class="btn ghost" data-lesson-restart>\u21BA Reset</button>' +
+    '<button class="btn ' + (end ? 'primary' : 'ghost') + '" data-study-practice>' + (end ? 'Start practice \u2192' : 'Skip to practice') + '</button></div>';
+  if (end) h += '<p class="note" style="color:#d2a679;margin-top:10px">Walkthrough complete. Now play this line yourself in stage 2.</p>';
   return h;
 }
 
 function practiceCardHtml(L) {
-  const total = L.th.moves.length;
   const you = L.userColor === 'w' ? 'White' : 'Black';
   const n = L.moves.length;
-  let h = '<div class="card-head"><div class="badge-lg lesson">\u265E' + TEXT_VS + '</div><div class="card-title">Practice: ' + esc(L.def.name) +
+  const total = L.th.moves.length;
+  let lastTi = 0;
+  for (let k = L.tis.length - 1; k >= 0; k--) { if (L.tis[k] != null) { lastTi = L.tis[k]; break; } }
+  let h = stagesHtml(2) + pillsHtml(L.def, L.vi, 'data-practice-line');
+  h += '<div class="card-head"><div class="badge-lg lesson">\u265E' + TEXT_VS + '</div><div class="card-title">Practice: ' + esc(L.def.name) +
     '<small style="color:var(--accent)">' + esc(L.vi ? L.th.line.name : 'Main line') + ' \u00B7 you play ' + you + '</small></div></div>';
 
   if (n === 0) {
-    h += '<p class="card-text">Play the theory moves for ' + you + ' on the board. I check every move against this line and explain why if you leave it.</p>';
+    h += '<p class="card-text">Play the moves for ' + you + ' on the board. Any line of this opening counts: I will tell you if you follow the main line, enter a variation, or leave the theory (and why).</p>';
   }
   const fb = L.fb;
   if (fb && fb.ok) {
-    h += '<div class="fb ok"><b>\u2713 ' + esc(fb.san) + '</b> \u2014 ' + (fb.shown ? 'the theory move.' : 'in theory!') +
-      (fb.name ? ' <span class="muted">(' + esc(fb.name) + ')</span>' : '') + (fb.note ? '<p>' + esc(fb.note) + '</p>' : '') + '</div>';
+    const via = fb.via
+      ? (fb.via.how === 'variation' ? 'valid \u2014 you entered the ' + fb.via.name
+        : 'valid transposition into the ' + fb.via.name)
+      : (fb.shown ? 'the theory move' : 'in theory');
+    h += '<div class="callout ok"><b>\u2713 ' + esc(fb.san) + ' \u00B7 ' + esc(via) + '</b>' +
+      (fb.note ? '<p>' + esc(fb.note) + '</p>' : '') +
+      (fb.ext && fb.ext.w ? '<p class="sub">' + esc(whyText(fb.ext.w)) + '</p>' : '') +
+      (fb.name ? '<p class="sub">Opening: ' + esc(fb.name) + '</p>' : '') + '</div>';
   } else if (fb) {
-    h += '<div class="fb bad"><b>' + esc(fb.san) + '</b> \u2014 you left the line.';
+    h += '<div class="callout bad"><b>' + esc(fb.san) + ' \u00B7 off book</b>';
     h += '<p>' + (fb.book
-      ? 'It is also a known book move (' + esc(fb.book) + '), but it is not the line you are practicing.'
-      : 'It is not a known theory move in this position.') + '</p>';
-    if (fb.exp) h += '<p>The line continues with <b>' + esc(fb.exp) + '</b>' + (fb.expNote ? ': ' + esc(fb.expNote) : '.') + '</p>';
-    if (fb.eng) h += '<p class="muted">' + esc(fb.eng) + '</p>';
+      ? 'This is also a known book move (' + esc(fb.book) + '), but it is outside the lines of this opening.'
+      : 'This is not a known theory move here.') + '</p>';
+    if (fb.exp) {
+      h += '<p>The line continues with <b>' + esc(fb.exp) + '</b>' + (fb.expNote ? ': ' + esc(fb.expNote) : '.') + '</p>';
+      if (fb.expExt && fb.expExt.w) h += '<p class="sub">Why the book move: ' + esc(whyText(fb.expExt.w)) + '</p>';
+      if (fb.expExt && fb.expExt.t) h += '<p class="sub">What your move misses: ' + esc(fb.expExt.t) + '</p>';
+    }
+    if (fb.eng) h += '<p class="sub">' + esc(fb.eng) + '</p>';
     h += '</div>';
   }
   if (L.reply && L.status !== 'off') {
-    h += '<p class="card-text" style="margin-top:10px">Reply: <b>' + esc(L.reply.san) + '</b>' + (L.reply.note ? ' \u2014 ' + esc(L.reply.note) : '') + '</p>';
+    h += '<div class="callout idea"><b>Reply \u00B7 ' + esc(L.reply.san) + '</b>' +
+      (L.reply.note ? '<p>' + esc(L.reply.note) + '</p>' : '') +
+      (L.reply.ext && L.reply.ext.w ? '<p class="sub">' + esc(whyText(L.reply.ext.w)) + '</p>' : '') + '</div>';
   }
-  h += progressBar(n / Math.max(1, total));
+  h += progressBar(lastTi / Math.max(1, total));
 
   if (L.status === 'done') {
     h += '<p class="note" style="color:#d2a679">Line complete! Mistakes: ' + L.mistakes + ' \u00B7 hints: ' + L.hints + '.</p>' +
-      '<div class="btnrow"><button class="btn primary" data-practice-restart>Practice again</button>' +
-      '<button class="btn ghost" data-practice-study>Study the line</button></div>';
+      '<div class="ctl-grid"><button class="btn primary" data-practice-restart>Practice again</button>' +
+      '<button class="btn ghost" data-practice-study>\u2190 Study this line</button></div>';
   } else if (L.status === 'off') {
-    h += '<div class="btnrow"><button class="btn primary" data-practice-undo>Take back</button>' +
-      '<button class="btn ghost" data-practice-show>Show the line move</button></div>';
+    h += '<div class="ctl-grid"><button class="btn primary big" data-practice-undo>Take back</button>' +
+      '<button class="btn ghost big" data-practice-show>Show book move</button></div>';
   } else {
-    h += '<div class="btnrow"><button class="btn ghost" data-practice-hint>Hint</button>' +
-      (n > 0 ? '<button class="btn ghost" data-practice-undo>Take back</button>' : '') + '</div>';
+    h += '<div class="ctl-grid"><button class="btn ghost big" data-practice-hint>Hint</button>' +
+      '<button class="btn ghost big" data-practice-undo' + (n > 0 ? '' : ' disabled') + '>Take back</button></div>' +
+      '<div class="ctl-grid"><button class="btn ghost" data-practice-restart>\u21BA Reset</button>' +
+      '<button class="btn ghost" data-practice-study>\u2190 Back to study</button></div>';
   }
   return h;
 }
@@ -4395,7 +7828,8 @@ function drillCardHtml(L) {
     '<small style="color:var(--muted)">' + esc(def.name) + ' \u00B7 step ' + (L.step + 1) + ' of ' + total + ' \u00B7 ' + side + ' to move</small></div></div>';
   h += '<p class="card-text">' + esc(st.task) + '</p>';
   if (L.step === 0 && !L.fb && L.moves.length === 0) h += '<p class="tip"><b>Goal.</b> ' + esc(def.goal) + '</p>';
-  if (L.fb) h += '<div class="fb ' + (L.fb.ok ? 'ok' : 'bad') + '">' + (L.fb.ok ? '<b>\u2713 </b>' : '') + esc(L.fb.text) + '</div>';
+  if (L.fb) h += '<div class="callout ' + (L.fb.ok ? 'ok' : 'bad') + '"><b>' + (L.fb.ok ? '\u2713 Correct' : 'Not quite') + '</b><p>' + esc(L.fb.text) + '</p></div>';
+  if (L.solved) h += legendHtml(drillShow(L));
   if (L.hint && !L.solved && st.hint) h += '<p class="note">Hint: ' + esc(st.hint) + '</p>';
   h += progressBar((L.step + (L.solved ? 1 : 0)) / total);
   if (L.solved) {
@@ -4459,8 +7893,8 @@ function renderModeBar() {
   let badge = 'What if';
   let line = '';
   if (L) {
-    if (L.kind === 'study') { badge = 'Learn'; line = L.def.name + ' \u00B7 ' + L.idx + '/' + L.moves.length; }
-    else if (L.kind === 'practice') { badge = 'Practice'; line = L.def.name + ' \u00B7 ' + (L.vi ? L.th.line.name : 'Main line'); }
+    if (L.kind === 'study') { badge = '1 \u00B7 Study'; line = L.def.name + ' \u00B7 ' + L.idx + '/' + L.moves.length; }
+    else if (L.kind === 'practice') { badge = '2 \u00B7 Practice'; line = L.def.name + ' \u00B7 ' + (L.vi ? L.th.line.name : 'Main line'); }
     else if (L.kind === 'drill') { badge = 'Lesson'; line = L.def.name + (L.finished ? '' : ' \u00B7 step ' + (L.step + 1) + '/' + L.def.steps.length); }
     else { badge = 'Play'; line = 'vs Bot \u00B7 ' + L.bot.name; }
   } else {
@@ -4508,13 +7942,19 @@ function wireEvents() {
     const t = e.target;
     const sub = t.closest('[data-learnsub]');
     if (sub) { state.learnSub = sub.dataset.learnsub; renderLearnTab(); return; }
+    const lf = t.closest('[data-learn-filter]');
+    if (lf) { state.learnFilter = lf.dataset.learnFilter; renderLearnTab(); return; }
+    const ls = t.closest('[data-learn-side]');
+    if (ls) { state.learnSide = ls.dataset.learnSide; renderLearnTab(); return; }
+    const ll = t.closest('[data-learn-line]');
+    if (ll) { state.learnLine = +ll.dataset.learnLine; renderLearnTab(); return; }
     const op = t.closest('[data-opening]');
-    if (op) { state.learnOpening = op.dataset.opening; renderLearnTab(); return; }
+    if (op) { state.learnOpening = op.dataset.opening; state.learnLine = 0; state.learnSide = null; renderLearnTab(); return; }
     if (t.closest('[data-learn-back]')) { state.learnOpening = null; renderLearnTab(); return; }
     const st = t.closest('[data-study]');
-    if (st) { const p = st.dataset.study.split(':'); startLesson(p[0], +p[1]); return; }
+    if (st) { const p = st.dataset.study.split(':'); startLesson(p[0], +p[1], p[2]); return; }
     const pr = t.closest('[data-practice]');
-    if (pr) { const p = pr.dataset.practice.split(':'); startPractice(p[0], +p[1]); return; }
+    if (pr) { const p = pr.dataset.practice.split(':'); startPractice(p[0], +p[1], p[2]); return; }
     const dr = t.closest('[data-drill]');
     if (dr) startDrill(dr.dataset.drill);
   });
@@ -4678,7 +8118,7 @@ async function boot() {
     return;
   }
 
-  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V9) || lsGet(LEGACY_PGN_V8) || lsGet(LEGACY_PGN_V7) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
+  const saved = lsGet(LS_PGN) || lsGet(LEGACY_PGN_V11) || lsGet(LEGACY_PGN_V10) || lsGet(LEGACY_PGN_V9) || lsGet(LEGACY_PGN_V8) || lsGet(LEGACY_PGN_V7) || lsGet(LEGACY_PGN_V6) || lsGet(LEGACY_PGN);
   let restored = false;
   if (saved) restored = !!loadGame(saved, {}).ok;
   cleanupLegacyStorage();
